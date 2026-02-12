@@ -1,0 +1,11 @@
+{
+  "name": "agent-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@walletconnect/sign-client": "^2.17.0",
+    "@walletconnect/utils": "^2.17.0",
+    "qrcode": "^1.5.4"
+  }
+}
