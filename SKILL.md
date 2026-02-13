@@ -56,14 +56,17 @@ node scripts/wallet.mjs sign --topic <topic> --message "Hello World" --chain sol
 When user asks to pair their wallet:
 
 1. Run `pair` → get URI + QR path
-2. Send the WC URI wrapped in backticks (tap-to-copy on mobile)
-3. User copies URI into wallet app → approves pairing
+2. Send **two messages** to the user:
+   - **Message 1:** "🔗 Pair your wallet" + QR code image as attachment
+   - **Message 2:** The raw `wc:` URI wrapped in backticks (tap-to-copy on mobile)
+3. User scans QR or copies URI into wallet app → approves pairing
 4. Run `auth` → wallet receives consent sign request
 5. User approves → agent stores session topic + verified address
 6. Confirm to user: "✅ Wallet connected"
 
 **UX rules:**
-- Send the raw `wc:` URI wrapped in backticks — no surrounding text
+- Message 2 must contain ONLY the backtick-wrapped URI — no other text
+- QR code is for desktop/scanning; URI copy is for mobile users
 - The pair command blocks waiting for approval (5 min timeout)
 - Kill the pair process after receiving the paired response, then run auth separately
 
