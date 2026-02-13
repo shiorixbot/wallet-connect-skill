@@ -1,9 +1,23 @@
 /**
- * Send transaction command — native or ERC-20 token transfers.
+ * Send transaction command — native or ERC-20 token transfers (EVM + Solana).
  */
 
 import { getClient, loadSessions } from "./client.mjs";
 import { requireSession, requireAccount, parseAccount } from "./helpers.mjs";
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  TransactionMessage,
+  VersionedTransaction,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
+
+// Solana RPC endpoints
+const SOLANA_RPC = {
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
+  "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z": "https://api.devnet.solana.com",
+};
 
 // Common ERC-20 token addresses by chain
 const TOKEN_ADDRESSES = {
@@ -19,38 +33,78 @@ const TOKEN_ADDRESSES = {
   },
 };
 
-const TOKEN_DECIMALS = {
-  USDC: 6,
-  USDT: 6,
-};
+const TOKEN_DECIMALS = { USDC: 6, USDT: 6 };
 
-export async function cmdSendTx(args) {
-  if (!args.topic) {
-    console.error(JSON.stringify({ error: "--topic required" }));
+// --- Solana send ---
+
+async function sendSolana(client, args, sessionData, chain) {
+  const accountStr = requireAccount(sessionData, chain, "Solana");
+  const { address: fromAddr } = parseAccount(accountStr);
+
+  const rpcUrl = SOLANA_RPC[chain];
+  if (!rpcUrl) {
+    console.error(JSON.stringify({ error: `No RPC for chain ${chain}` }));
     process.exit(1);
   }
 
-  const client = await getClient();
-  const sessionData = requireSession(loadSessions(), args.topic);
-  const chain = args.chain || "eip155:1";
+  const connection = new Connection(rpcUrl, "confirmed");
+  const fromPubkey = new PublicKey(fromAddr);
+  const toPubkey = new PublicKey(args.to);
+  const lamports = Math.round(parseFloat(args.amount || "0") * LAMPORTS_PER_SOL);
 
-  if (chain.startsWith("solana:")) {
-    console.log(
-      JSON.stringify({
-        status: "error",
-        error: "Solana send-tx not yet implemented. Use sign for message signing.",
-      })
-    );
-    await client.core.relayer.transportClose();
-    return;
-  }
+  // Build transfer instruction
+  const instruction = SystemProgram.transfer({ fromPubkey, toPubkey, lamports });
 
+  // Fetch recent blockhash
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+
+  // Build as VersionedTransaction (v0) — required by Gem Wallet
+  const messageV0 = new TransactionMessage({
+    payerKey: fromPubkey,
+    recentBlockhash: blockhash,
+    instructions: [instruction],
+  }).compileToV0Message();
+
+  const vtx = new VersionedTransaction(messageV0);
+
+  // Serialize for WC (base64)
+  const serialized = Buffer.from(vtx.serialize()).toString("base64");
+
+  // Request wallet to sign AND send (wallet broadcasts)
+  const result = await client.request({
+    topic: args.topic,
+    chainId: chain,
+    request: {
+      method: "solana_signAndSendTransaction",
+      params: { transaction: serialized },
+    },
+  });
+
+  // Wallet returns the tx signature/hash
+  const txid = result.signature || result;
+
+  console.log(
+    JSON.stringify({
+      status: "sent",
+      txHash: txid,
+      chain,
+      from: fromAddr,
+      to: args.to,
+      amount: args.amount,
+      token: "SOL",
+      explorer: `https://solscan.io/tx/${txid}`,
+    })
+  );
+}
+
+// --- EVM send ---
+
+async function sendEvm(client, args, sessionData, chain) {
   const accountStr = requireAccount(sessionData, chain, "EVM");
   const { address: from } = parseAccount(accountStr);
 
   let tx;
   if (args.token && args.token !== "ETH") {
-    // ERC-20 transfer
     const tokenAddr = TOKEN_ADDRESSES[args.token]?.[chain];
     if (!tokenAddr) {
       console.error(
@@ -67,7 +121,6 @@ export async function cmdSendTx(args) {
 
     tx = { from, to: tokenAddr, data };
   } else {
-    // Native ETH transfer
     const weiAmount = BigInt(Math.round(parseFloat(args.amount || "0") * 1e18));
     tx = {
       from,
@@ -76,26 +129,46 @@ export async function cmdSendTx(args) {
     };
   }
 
+  const txHash = await client.request({
+    topic: args.topic,
+    chainId: chain,
+    request: {
+      method: "eth_sendTransaction",
+      params: [tx],
+    },
+  });
+
+  console.log(
+    JSON.stringify({
+      status: "sent",
+      txHash,
+      chain,
+      from,
+      to: args.to,
+      amount: args.amount,
+      token: args.token || "ETH",
+    })
+  );
+}
+
+// --- Entry ---
+
+export async function cmdSendTx(args) {
+  if (!args.topic) {
+    console.error(JSON.stringify({ error: "--topic required" }));
+    process.exit(1);
+  }
+
+  const client = await getClient();
+  const sessionData = requireSession(loadSessions(), args.topic);
+  const chain = args.chain || "eip155:1";
+
   try {
-    const txHash = await client.request({
-      topic: args.topic,
-      chainId: chain,
-      request: {
-        method: "eth_sendTransaction",
-        params: [tx],
-      },
-    });
-    console.log(
-      JSON.stringify({
-        status: "sent",
-        txHash,
-        chain,
-        from,
-        to: args.to,
-        amount: args.amount,
-        token: args.token || "ETH",
-      })
-    );
+    if (chain.startsWith("solana:")) {
+      await sendSolana(client, args, sessionData, chain);
+    } else {
+      await sendEvm(client, args, sessionData, chain);
+    }
   } catch (err) {
     console.log(JSON.stringify({ status: "rejected", error: err.message }));
   }

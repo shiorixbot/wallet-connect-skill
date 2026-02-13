@@ -15,7 +15,7 @@ const NAMESPACE_CONFIG = {
     events: ["chainChanged", "accountsChanged"],
   },
   solana: {
-    methods: ["solana_signMessage", "solana_signTransaction"],
+    methods: ["solana_signMessage", "solana_signTransaction", "solana_signAndSendTransaction"],
     events: [],
   },
 };
