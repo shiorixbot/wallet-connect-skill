@@ -7,6 +7,17 @@ description: Connect AI agents to crypto wallets via WalletConnect. Use when the
 
 Connect to user's crypto wallet via WalletConnect v2. Supports EVM chains and Solana.
 
+## Install
+
+```bash
+cd scripts
+npm install
+```
+
+Requires:
+- Node.js ≥ 18
+- `WALLETCONNECT_PROJECT_ID` environment variable set
+
 ## Quick Start
 
 ```bash
