@@ -27,10 +27,3 @@
 
 - `solana_signMessage` — sign a message
 - `solana_signTransaction` — sign a transaction
-
-## WalletConnect Deep Links
-
-For mobile wallet redirection:
-- Trust Wallet: `trust://wc?uri=<encoded_uri>`
-- MetaMask: `metamask://wc?uri=<encoded_uri>`
-- Generic: `wc:<topic>@2?relay-protocol=irn&symKey=<key>`
