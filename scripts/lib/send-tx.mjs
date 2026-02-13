@@ -22,7 +22,6 @@ import {
 // Solana RPC endpoints
 const SOLANA_RPC = {
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
-  "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z": "https://api.devnet.solana.com",
 };
 
 // Common ERC-20 token addresses by chain
@@ -31,7 +30,6 @@ const TOKEN_ADDRESSES = {
     "eip155:1": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     "eip155:8453": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "eip155:42161": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-    "eip155:137": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
   },
   USDT: {
     "eip155:1": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -113,7 +111,7 @@ async function sendSolana(client, args, sessionData, chain) {
   // Fetch recent blockhash
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
-  // Build as VersionedTransaction (v0) — required by Gem Wallet
+  // Build as VersionedTransaction (v0)
   const messageV0 = new TransactionMessage({
     payerKey: fromPubkey,
     recentBlockhash: blockhash,
