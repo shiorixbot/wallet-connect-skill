@@ -187,7 +187,7 @@ CI runs on every push/PR to main (Node 20 + 22).
 
 - `WALLETCONNECT_PROJECT_ID` — required
 - `WC_METADATA_NAME` — optional (default: "ShioriX")
-- `WC_METADATA_URL` — optional (default: "https://shiorix.hewig.dev")
+- `WC_METADATA_URL` — optional (default: "https://shiorix.com")
 
 ## Chain Reference
 

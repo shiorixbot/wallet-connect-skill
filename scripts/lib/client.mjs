@@ -18,7 +18,7 @@ function getMetadata() {
   return {
     name: process.env.WC_METADATA_NAME || "ShioriX",
     description: process.env.WC_METADATA_DESCRIPTION || "AI Agent Wallet Connection",
-    url: process.env.WC_METADATA_URL || "https://shiorix.hewig.dev",
+    url: process.env.WC_METADATA_URL || "https://shiorix.com",
     icons: [process.env.WC_METADATA_ICON || "https://avatars.githubusercontent.com/u/258157775"],
   };
 }
