@@ -4,6 +4,8 @@ An [OpenClaw](https://github.com/openclaw/openclaw) skill that connects AI agent
 
 Agents can pair with any WalletConnect-compatible wallet, authenticate via consent signing, and request transactions — all with explicit user approval.
 
+📝 **Blog post:** [Do AI Agents Really Need New Wallets?](https://shiorix.com/blog/wallet-connect-skill.html)
+
 ## How It Works
 
 ```
@@ -35,7 +37,7 @@ Agent                          User's Wallet
 
 ```bash
 # Install dependencies
-cd scripts && npm install
+npm install
 
 # Set your WalletConnect project ID
 export WALLETCONNECT_PROJECT_ID=your_project_id
