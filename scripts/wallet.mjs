@@ -32,7 +32,9 @@ function resolveAddress(args) {
     const sessions = loadSessions();
     const match = findSessionByAddress(sessions, args.address);
     if (!match) {
-      console.error(JSON.stringify({ error: "No session found for address", address: args.address }));
+      console.error(
+        JSON.stringify({ error: "No session found for address", address: args.address }),
+      );
       process.exit(1);
     }
     args.topic = match.topic;
@@ -97,13 +99,19 @@ async function cmdWhoami(args) {
       console.error(JSON.stringify({ error: "Session not found", topic: args.topic }));
       process.exit(1);
     }
-    console.log(JSON.stringify({
-      topic: args.topic,
-      peerName: session.peerName,
-      accounts: session.accounts,
-      authenticated: session.authenticated || false,
-      createdAt: session.createdAt,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          topic: args.topic,
+          peerName: session.peerName,
+          accounts: session.accounts,
+          authenticated: session.authenticated || false,
+          createdAt: session.createdAt,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -113,15 +121,23 @@ async function cmdWhoami(args) {
     console.log(JSON.stringify({ error: "No sessions found" }));
     return;
   }
-  entries.sort((a, b) => (b[1].updatedAt || b[1].createdAt || "").localeCompare(a[1].updatedAt || a[1].createdAt || ""));
+  entries.sort((a, b) =>
+    (b[1].updatedAt || b[1].createdAt || "").localeCompare(a[1].updatedAt || a[1].createdAt || ""),
+  );
   const [topic, session] = entries[0];
-  console.log(JSON.stringify({
-    topic,
-    peerName: session.peerName,
-    accounts: session.accounts,
-    authenticated: session.authenticated || false,
-    createdAt: session.createdAt,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        topic,
+        peerName: session.peerName,
+        accounts: session.accounts,
+        authenticated: session.authenticated || false,
+        createdAt: session.createdAt,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 // --- delete-session ---
@@ -149,17 +165,25 @@ async function cmdTokens(args) {
   const chain = args.chain || "eip155:1";
   const tokens = getTokensForChain(chain);
   if (tokens.length === 0) {
-    console.log(JSON.stringify({ chain, tokens: [], message: "No tokens configured for this chain" }));
+    console.log(
+      JSON.stringify({ chain, tokens: [], message: "No tokens configured for this chain" }),
+    );
   } else {
-    console.log(JSON.stringify({
-      chain,
-      tokens: tokens.map((t) => ({
-        symbol: t.symbol,
-        name: t.name,
-        decimals: t.decimals,
-        address: t.address,
-      })),
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          chain,
+          tokens: tokens.map((t) => ({
+            symbol: t.symbol,
+            name: t.name,
+            decimals: t.decimals,
+            address: t.address,
+          })),
+        },
+        null,
+        2,
+      ),
+    );
   }
 }
 
@@ -206,10 +230,22 @@ Options:
 const commands = {
   pair: cmdPair,
   status: cmdStatus,
-  auth: (args) => { args = resolveAddress(args); return cmdAuth(args); },
-  sign: (args) => { args = resolveAddress(args); return cmdSign(args); },
-  "send-tx": (args) => { args = resolveAddress(args); return cmdSendTx(args); },
-  balance: (args) => { if (args.address || args.topic) args = resolveAddress(args); return cmdBalance(args); },
+  auth: (args) => {
+    args = resolveAddress(args);
+    return cmdAuth(args);
+  },
+  sign: (args) => {
+    args = resolveAddress(args);
+    return cmdSign(args);
+  },
+  "send-tx": (args) => {
+    args = resolveAddress(args);
+    return cmdSendTx(args);
+  },
+  balance: (args) => {
+    if (args.address || args.topic) args = resolveAddress(args);
+    return cmdBalance(args);
+  },
   tokens: cmdTokens,
   sessions: cmdSessions,
   "list-sessions": cmdListSessions,

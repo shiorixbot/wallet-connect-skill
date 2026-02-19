@@ -25,10 +25,12 @@ export async function cmdSign(args) {
   const chainHint = args.chain;
 
   // Determine which chain to sign on
-  const solAccount = findAccount(sessionData.accounts, chainHint?.startsWith("solana") ? chainHint : null)
-    || (!chainHint ? findAccount(sessionData.accounts, "solana") : null);
-  const evmAccount = findAccount(sessionData.accounts, chainHint?.startsWith("eip155") ? chainHint : null)
-    || (!chainHint ? findAccount(sessionData.accounts, "eip155") : null);
+  const solAccount =
+    findAccount(sessionData.accounts, chainHint?.startsWith("solana") ? chainHint : null) ||
+    (!chainHint ? findAccount(sessionData.accounts, "solana") : null);
+  const evmAccount =
+    findAccount(sessionData.accounts, chainHint?.startsWith("eip155") ? chainHint : null) ||
+    (!chainHint ? findAccount(sessionData.accounts, "eip155") : null);
 
   const useSolana = chainHint?.startsWith("solana") || (!chainHint && !evmAccount && solAccount);
   const account = useSolana ? solAccount : evmAccount;

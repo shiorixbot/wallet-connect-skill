@@ -3,7 +3,13 @@
  */
 
 import { getClient, loadSessions } from "./client.mjs";
-import { requireSession, requireAccount, parseAccount, resolveAddress, requestWithTimeout } from "./helpers.mjs";
+import {
+  requireSession,
+  requireAccount,
+  parseAccount,
+  resolveAddress,
+  requestWithTimeout,
+} from "./helpers.mjs";
 import { getTokenAddress, getTokenDecimals } from "./tokens.mjs";
 import {
   Connection,
@@ -50,9 +56,7 @@ async function sendSolana(client, args, sessionData, chain) {
     // SPL token transfer
     const mintAddr = getTokenAddress(args.token, chain);
     if (!mintAddr) {
-      console.error(
-        JSON.stringify({ error: `Token ${args.token} not supported on ${chain}` })
-      );
+      console.error(JSON.stringify({ error: `Token ${args.token} not supported on ${chain}` }));
       process.exit(1);
     }
 
@@ -68,17 +72,15 @@ async function sendSolana(client, args, sessionData, chain) {
     if (!toAtaInfo) {
       instructions.push(
         createAssociatedTokenAccountInstruction(
-          fromPubkey,  // payer
-          toAta,       // ata
-          toPubkey,    // owner
-          mintPubkey   // mint
-        )
+          fromPubkey, // payer
+          toAta, // ata
+          toPubkey, // owner
+          mintPubkey, // mint
+        ),
       );
     }
 
-    instructions.push(
-      createTransferInstruction(fromAta, toAta, fromPubkey, amount)
-    );
+    instructions.push(createTransferInstruction(fromAta, toAta, fromPubkey, amount));
     tokenLabel = args.token;
   } else {
     // Native SOL transfer
@@ -89,12 +91,17 @@ async function sendSolana(client, args, sessionData, chain) {
   // Add priority fee (median of recent fees)
   try {
     const recentFees = await connection.getRecentPrioritizationFees();
-    const feeValues = recentFees.map((f) => f.prioritizationFee).filter((f) => f > 0).sort((a, b) => a - b);
+    const feeValues = recentFees
+      .map((f) => f.prioritizationFee)
+      .filter((f) => f > 0)
+      .sort((a, b) => a - b);
     if (feeValues.length > 0) {
       const medianFee = feeValues[Math.floor(feeValues.length / 2)];
       instructions.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: medianFee }));
     }
-  } catch { /* skip priority fee on error */ }
+  } catch {
+    /* skip priority fee on error */
+  }
 
   // Fetch recent blockhash
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
@@ -131,7 +138,7 @@ async function sendSolana(client, args, sessionData, chain) {
       amount: args.amount,
       token: tokenLabel,
       explorer: `https://solscan.io/tx/${txid}`,
-    })
+    }),
   );
 }
 
@@ -151,9 +158,7 @@ async function sendEvm(client, args, sessionData, chain) {
   if (args.token && args.token !== "ETH") {
     const tokenAddr = getTokenAddress(args.token, chain);
     if (!tokenAddr) {
-      console.error(
-        JSON.stringify({ error: `Token ${args.token} not supported on ${chain}` })
-      );
+      console.error(JSON.stringify({ error: `Token ${args.token} not supported on ${chain}` }));
       process.exit(1);
     }
 
@@ -192,7 +197,7 @@ async function sendEvm(client, args, sessionData, chain) {
       ...(resolvedTo !== args.to ? { ens: args.to } : {}),
       amount: args.amount,
       token: args.token || "ETH",
-    })
+    }),
   );
 }
 

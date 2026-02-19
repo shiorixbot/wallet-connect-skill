@@ -6,10 +6,7 @@ import { SignClient } from "@walletconnect/sign-client";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
-export const SESSIONS_DIR = join(
-  process.env.HOME || "/tmp",
-  ".agent-wallet"
-);
+export const SESSIONS_DIR = join(process.env.HOME || "/tmp", ".agent-wallet");
 export const SESSIONS_FILE = join(SESSIONS_DIR, "sessions.json");
 
 // --- Metadata from env or defaults ---
@@ -68,7 +65,11 @@ export function findSessionByAddress(sessions, address) {
   }
   if (matches.length === 0) return null;
   // Return the most recently updated session
-  matches.sort((a, b) => (b.session.updatedAt || b.session.createdAt || "").localeCompare(a.session.updatedAt || a.session.createdAt || ""));
+  matches.sort((a, b) =>
+    (b.session.updatedAt || b.session.createdAt || "").localeCompare(
+      a.session.updatedAt || a.session.createdAt || "",
+    ),
+  );
   return matches[0];
 }
 
@@ -77,9 +78,7 @@ export function findSessionByAddress(sessions, address) {
 export async function getClient() {
   const projectId = process.env.WALLETCONNECT_PROJECT_ID;
   if (!projectId) {
-    console.error(
-      JSON.stringify({ error: "WALLETCONNECT_PROJECT_ID env var required" })
-    );
+    console.error(JSON.stringify({ error: "WALLETCONNECT_PROJECT_ID env var required" }));
     process.exit(1);
   }
 

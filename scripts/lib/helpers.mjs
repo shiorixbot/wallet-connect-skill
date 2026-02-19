@@ -2,9 +2,7 @@
  * Shared helpers for wallet-connect-skill.
  */
 
-import {
-  parseAccountId,
-} from "@walletconnect/utils";
+import { parseAccountId } from "@walletconnect/utils";
 import bs58 from "bs58";
 import { normalize } from "viem/ens";
 import { createPublicClient, http } from "viem";
@@ -94,9 +92,7 @@ export function requireSession(sessions, topic) {
 export function requireAccount(sessionData, chainHint, label = "matching") {
   const account = findAccount(sessionData.accounts, chainHint);
   if (!account) {
-    console.error(
-      JSON.stringify({ error: `No ${label} account found`, chainHint })
-    );
+    console.error(JSON.stringify({ error: `No ${label} account found`, chainHint }));
     process.exit(1);
   }
   return account;
@@ -120,7 +116,11 @@ export async function resolveAddress(addressOrEns) {
 /**
  * Wrap client.request with timeout and periodic polling status on stderr.
  */
-export async function requestWithTimeout(client, requestParams, { pollIntervalMs = 10000, timeoutMs = 300000 } = {}) {
+export async function requestWithTimeout(
+  client,
+  requestParams,
+  { pollIntervalMs = 10000, timeoutMs = 300000 } = {},
+) {
   const start = Date.now();
 
   const pollTimer = setInterval(() => {
@@ -132,7 +132,10 @@ export async function requestWithTimeout(client, requestParams, { pollIntervalMs
     const result = await Promise.race([
       client.request(requestParams),
       new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Request timed out after 5 minutes — user did not respond")), timeoutMs);
+        setTimeout(
+          () => reject(new Error("Request timed out after 5 minutes — user did not respond")),
+          timeoutMs,
+        );
       }),
     ]);
     return result;

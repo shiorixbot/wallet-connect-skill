@@ -147,10 +147,14 @@ export async function cmdBalance(args) {
     const sessionData = requireSession(sessions, args.topic);
     const chainsToCheck = args.chain
       ? [args.chain]
-      : [...new Set((sessionData.accounts || []).map((a) => {
-          const parts = a.split(":");
-          return parts.slice(0, 2).join(":");
-        }))];
+      : [
+          ...new Set(
+            (sessionData.accounts || []).map((a) => {
+              const parts = a.split(":");
+              return parts.slice(0, 2).join(":");
+            }),
+          ),
+        ];
 
     for (const chain of chainsToCheck) {
       const acct = findAccount(sessionData.accounts, chain);
@@ -167,7 +171,7 @@ export async function cmdBalance(args) {
     // No session/address — check all session accounts
     const chain = args.chain;
     for (const [, sessionData] of Object.entries(sessions)) {
-      for (const acctStr of (sessionData.accounts || [])) {
+      for (const acctStr of sessionData.accounts || []) {
         const { address, chainId } = parseAccount(acctStr);
         const acctChain = chainId;
         if (!chain || acctChain === chain) {
@@ -178,7 +182,11 @@ export async function cmdBalance(args) {
   }
 
   if (accountsToCheck.length === 0) {
-    console.log(JSON.stringify({ error: "No accounts found. Use --topic, --address, or ensure sessions exist." }));
+    console.log(
+      JSON.stringify({
+        error: "No accounts found. Use --topic, --address, or ensure sessions exist.",
+      }),
+    );
     return;
   }
 

@@ -58,9 +58,7 @@ export async function cmdPair(args) {
   // Wait for approval (blocking)
   try {
     const session = await approval();
-    const accounts = Object.values(session.namespaces).flatMap(
-      (ns) => ns.accounts || []
-    );
+    const accounts = Object.values(session.namespaces).flatMap((ns) => ns.accounts || []);
 
     saveSession(session.topic, {
       accounts,
@@ -70,12 +68,16 @@ export async function cmdPair(args) {
     });
 
     console.log(
-      JSON.stringify({
-        status: "paired",
-        topic: session.topic,
-        accounts,
-        peerName: session.peer?.metadata?.name,
-      }, null, 2)
+      JSON.stringify(
+        {
+          status: "paired",
+          topic: session.topic,
+          accounts,
+          peerName: session.peer?.metadata?.name,
+        },
+        null,
+        2,
+      ),
     );
   } catch (err) {
     console.log(JSON.stringify({ status: "rejected", error: err.message }));

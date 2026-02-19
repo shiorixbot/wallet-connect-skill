@@ -64,7 +64,7 @@ export async function cmdAuth(args) {
         signature,
         nonce,
         message,
-      })
+      }),
     );
   } catch (err) {
     console.log(JSON.stringify({ status: "rejected", error: err.message }));
