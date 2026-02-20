@@ -31,9 +31,10 @@ wallet-connect-skill/
 │       ├── helpers.mjs   # Shared utils (ENS, timeout, encoding, account lookup)
 │       ├── pair.mjs      # Pairing command
 │       ├── auth.mjs      # Authentication (consent sign)
-│       ├── sign.mjs      # Message signing (EVM + Solana)
-│       ├── send-tx.mjs   # Transaction sending (native + token, EVM + Solana)
-│       └── tokens.mjs    # Token metadata (addresses, decimals)
+│       ├── sign.mjs             # Message signing (EVM + Solana)
+│       ├── sign-typed-data.mjs  # EIP-712 typed data signing (EVM only)
+│       ├── send-tx.mjs          # Transaction sending (native + token, EVM + Solana)
+│       └── tokens.mjs           # Token metadata (addresses, decimals)
 └── references/
     └── chains.md         # Supported chain IDs and tokens
 ```
@@ -142,6 +143,29 @@ node scripts/wallet.mjs sign --topic <topic> --message "Hello World"
 # Solana (solana_signMessage, bs58-encoded)
 node scripts/wallet.mjs sign --topic <topic> --message "Hello World" --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
 ```
+
+### Sign Typed Data (EIP-712)
+```bash
+# Inline JSON
+node scripts/wallet.mjs sign-typed-data --topic <topic> \
+  --data '{"domain":{"name":"MyApp","version":"1","chainId":1},"types":{"Mail":[{"name":"from","type":"address"},{"name":"content","type":"string"}]},"message":{"from":"0xABC...","content":"Hello"}}'
+
+# From file
+node scripts/wallet.mjs sign-typed-data --address 0xADDR --data @/path/to/typed-data.json
+
+# By address (no --topic needed)
+node scripts/wallet.mjs sign-typed-data --address 0xC36edF48e21cf395B206352A1819DE658fD7f988 \
+  --data '{"domain":{...},"types":{...},"message":{...}}'
+```
+
+Output: `{ status, address, signature, chain, primaryType }`
+
+**Notes:**
+- EVM-only (EIP-712 is not applicable to Solana)
+- `--data` accepts a raw JSON string or `@filepath` (reads from file)
+- `primaryType` is inferred automatically from the `types` object if not provided
+- Required fields: `domain`, `types`, `message`
+- Uses `eth_signTypedData_v4` (MetaMask-compatible, EIP-712 spec)
 
 ## Features
 
