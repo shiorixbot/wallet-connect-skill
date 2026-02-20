@@ -7,6 +7,7 @@
  *   status           Check session status
  *   auth             Send consent sign request
  *   sign             Sign an arbitrary message
+ *   sign-typed-data  Sign EIP-712 typed data (EVM only)
  *   send-tx          Send a transaction
  *   balance          Check wallet balances via public RPC (no wallet needed)
  *   tokens           List supported tokens for a given chain
@@ -20,6 +21,7 @@ import { parseArgs } from "util";
 import { cmdPair } from "./lib/pair.mjs";
 import { cmdAuth } from "./lib/auth.mjs";
 import { cmdSign } from "./lib/sign.mjs";
+import { cmdSignTypedData } from "./lib/sign-typed-data.mjs";
 import { cmdSendTx } from "./lib/send-tx.mjs";
 import { cmdBalance } from "./lib/balance.mjs";
 import { loadSessions, saveSessions, findSessionByAddress } from "./lib/client.mjs";
@@ -200,6 +202,7 @@ const { positionals, values } = parseArgs({
     to: { type: "string" },
     amount: { type: "string" },
     token: { type: "string" },
+    data: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
 });
@@ -214,6 +217,7 @@ Commands:
   status           Check session (--topic <topic> | --address <addr>)
   auth             Send consent sign (--topic <topic> | --address <addr>)
   sign             Sign message (--topic <topic> | --address <addr>) --message <msg>
+  sign-typed-data  Sign EIP-712 typed data (--topic | --address) --data <JSON or @file>
   send-tx          Send transaction (--topic <topic> | --address <addr>) --chain <chain> --to <addr> --amount <n> [--token USDC]
   balance          Check wallet balances (--topic <topic> | --address <addr> [--chain <chain>])
   tokens           List supported tokens for a chain (--chain <chain>)
@@ -237,6 +241,10 @@ const commands = {
   sign: (args) => {
     args = resolveAddress(args);
     return cmdSign(args);
+  },
+  "sign-typed-data": (args) => {
+    args = resolveAddress(args);
+    return cmdSignTypedData(args);
   },
   "send-tx": (args) => {
     args = resolveAddress(args);
