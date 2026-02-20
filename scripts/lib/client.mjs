@@ -13,7 +13,7 @@ export const SESSIONS_FILE = join(SESSIONS_DIR, "sessions.json");
 
 function getMetadata() {
   return {
-    name: process.env.WC_METADATA_NAME || "ShioriX",
+    name: process.env.WC_METADATA_NAME || "Agent Wallet",
     description: process.env.WC_METADATA_DESCRIPTION || "AI Agent Wallet Connection",
     url: process.env.WC_METADATA_URL || "https://shiorix.com",
     icons: [process.env.WC_METADATA_ICON || "https://avatars.githubusercontent.com/u/258157775"],

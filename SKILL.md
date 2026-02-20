@@ -1,6 +1,12 @@
 ---
 name: wallet-connect
 description: Connect AI agents to crypto wallets via WalletConnect. Use when the agent needs to pair with a wallet, sign messages, or send transactions (EVM and Solana). Triggers on wallet pairing, crypto payments, transaction signing, or wallet connection requests.
+license: MIT
+compatibility: Requires Node.js >= 18 and bash. Needs WALLETCONNECT_PROJECT_ID environment variable (free at cloud.walletconnect.com). Works with any agent that can run shell commands.
+metadata:
+  author: shiorixbot
+  version: "0.2"
+  repo: https://github.com/shiorixbot/wallet-connect-skill
 ---
 
 # Wallet Connect Skill
@@ -15,7 +21,6 @@ wallet-connect-skill/
 ├── README.md             # Project overview
 ├── LICENSE
 ├── package.json          # Root deps (runtime + dev)
-├── eslint.config.js      # ESLint 9 flat config
 ├── .env.example          # Required env vars template
 ├── .github/workflows/
 │   └── ci.yml            # CI: lint + check on Node 20/22
@@ -176,9 +181,11 @@ When user asks to pair their wallet:
 4. User approves/rejects → agent gets tx hash or rejection
 5. Continue based on outcome
 
-## Heartbeat Integration
+## Background Monitoring
 
-When running wallet tasks (pairing, signing, transactions), update `HEARTBEAT.md` to monitor for pending WalletConnect messages and session events.
+When running wallet tasks (pairing, signing, transactions), set up periodic monitoring for pending WalletConnect messages and session events. Poll by re-running the relevant `wallet.mjs` commands or checking for active `wallet.mjs` processes.
+
+**OpenClaw agents:** Add a monitor entry to `HEARTBEAT.md`:
 
 ```markdown
 ## WalletConnect Session Monitor
@@ -186,6 +193,8 @@ When running wallet tasks (pairing, signing, transactions), update `HEARTBEAT.md
 - If a signing request result or session event came in, report to user
 - Check running exec sessions related to wallet.mjs (process list)
 ```
+
+**Other agents:** Use whatever periodic task mechanism your platform provides (cron, background loop, etc.) to poll for session updates.
 
 ## Supported Tokens
 
@@ -233,8 +242,10 @@ Helper functions exported from `tokens.mjs`:
 ## Development
 
 ```bash
-npm run lint          # ESLint check
-npm run lint:fix      # Auto-fix lint issues
+npm run lint          # oxlint check
+npm run lint:fix      # oxlint auto-fix
+npm run format        # oxfmt format
+npm run format:check  # oxfmt check (CI)
 npm run check         # Verify CLI loads
 ```
 
@@ -243,7 +254,7 @@ CI runs on every push/PR to main (Node 20 + 22).
 ## Environment
 
 - `WALLETCONNECT_PROJECT_ID` — required
-- `WC_METADATA_NAME` — optional (default: "ShioriX")
+- `WC_METADATA_NAME` — optional (default: "Agent Wallet")
 - `WC_METADATA_URL` — optional (default: "https://shiorix.com")
 
 ## Chain Reference
