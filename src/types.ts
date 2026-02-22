@@ -37,6 +37,7 @@ export interface ParsedArgs {
   chain?: string;
   chains?: string;
   to?: string;
+  out?: string;
   amount?: string;
   token?: string;
   data?: string;
