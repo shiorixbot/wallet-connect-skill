@@ -35,6 +35,7 @@ wallet-connect-skill/
 │       ├── pair.ts       # Pairing command
 │       ├── auth.ts       # Authentication (consent sign)
 │       ├── sign.ts       # Message signing (EVM + Solana)
+│       ├── sign-typed-data.ts # EIP-712 typed data signing (EVM only)
 │       ├── send-tx.ts    # Transaction sending (native + token, EVM + Solana)
 │       ├── balance.ts    # Balance checking (EVM + Solana)
 │       ├── health.ts     # Session health detection (wc_ping)
@@ -177,6 +178,24 @@ tsx src/cli.ts sign --topic <topic> --message "Hello World"
 # Solana (solana_signMessage, bs58-encoded)
 tsx src/cli.ts sign --topic <topic> --message "Hello World" --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
 ```
+
+### Sign Typed Data (EIP-712)
+Signs structured data via `eth_signTypedData_v4`. EVM only.
+
+```bash
+# Inline JSON
+tsx src/cli.ts sign-typed-data --topic <topic> --data '{"domain":{"name":"MyApp","version":"1","chainId":1},"types":{"Mail":[{"name":"from","type":"address"},{"name":"contents","type":"string"}]},"message":{"from":"0xabc...","contents":"Hello"}}'
+
+# From file
+tsx src/cli.ts sign-typed-data --topic <topic> --data @/path/to/typed-data.json
+
+# Explicit chain
+tsx src/cli.ts sign-typed-data --topic <topic> --data @payload.json --chain eip155:137
+```
+
+`primaryType` is inferred automatically from the `types` object (first non-`EIP712Domain` key) if not provided.
+
+Output: `{ status, address, signature, chain, primaryType }`
 
 ## Features
 

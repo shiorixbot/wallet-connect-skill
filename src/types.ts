@@ -45,6 +45,18 @@ export interface ParsedArgs {
   help?: boolean;
 }
 
+export interface Eip712TypeEntry {
+  name: string;
+  type: string;
+}
+
+export interface TypedData {
+  domain: Record<string, unknown>;
+  types: Record<string, Eip712TypeEntry[]>;
+  message: Record<string, unknown>;
+  primaryType?: string;
+}
+
 export interface BalanceEntry {
   token: string;
   balance?: string;
