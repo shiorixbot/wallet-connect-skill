@@ -1,9 +1,10 @@
 /**
- * Auth command — send consent sign request for wallet verification.
+ * Auth command -- send consent sign request for wallet verification.
  */
 
 import { randomBytes } from "crypto";
-import { getClient, loadSessions, saveSession } from "./client.mjs";
+import { getClient } from "../client.js";
+import { loadSessions, saveSession } from "../storage.js";
 import {
   requireSession,
   requireAccount,
@@ -11,9 +12,10 @@ import {
   redactAddress,
   encodeEvmMessage,
   requestWithTimeout,
-} from "./helpers.mjs";
+} from "../helpers.js";
+import type { ParsedArgs } from "../types.js";
 
-export async function cmdAuth(args) {
+export async function cmdAuth(args: ParsedArgs): Promise<void> {
   if (!args.topic) {
     console.error(JSON.stringify({ error: "--topic required" }));
     process.exit(1);
@@ -53,7 +55,7 @@ export async function cmdAuth(args) {
       authenticated: true,
       authAddress: address,
       authNonce: nonce,
-      authSignature: signature,
+      authSignature: signature as string,
       authTimestamp: timestamp,
     });
 
@@ -67,7 +69,7 @@ export async function cmdAuth(args) {
       }),
     );
   } catch (err) {
-    console.log(JSON.stringify({ status: "rejected", error: err.message }));
+    console.log(JSON.stringify({ status: "rejected", error: (err as Error).message }));
   }
 
   await client.core.relayer.transportClose();

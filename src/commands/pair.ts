@@ -1,15 +1,16 @@
 /**
- * Pair command — create a new WalletConnect pairing session.
+ * Pair command -- create a new WalletConnect pairing session.
  */
 
 import QRCode from "qrcode";
 import { mkdirSync } from "fs";
 import { join } from "path";
 import { parseChainId } from "@walletconnect/utils";
-import { getClient, saveSession, SESSIONS_DIR } from "./client.mjs";
+import { getClient } from "../client.js";
+import { saveSession, SESSIONS_DIR } from "../storage.js";
+import type { ParsedArgs } from "../types.js";
 
-// WC methods we request per namespace
-const NAMESPACE_CONFIG = {
+const NAMESPACE_CONFIG: Record<string, { methods: string[]; events: string[] }> = {
   eip155: {
     methods: ["personal_sign", "eth_sendTransaction", "eth_signTypedData_v4"],
     events: ["chainChanged", "accountsChanged"],
@@ -20,11 +21,10 @@ const NAMESPACE_CONFIG = {
   },
 };
 
-export async function cmdPair(args) {
+export async function cmdPair(args: ParsedArgs): Promise<void> {
   const chains = args.chains ? args.chains.split(",") : ["eip155:1"];
 
-  // Group chains by namespace using WC utils
-  const byNamespace = {};
+  const byNamespace: Record<string, string[]> = {};
   for (const chain of chains) {
     const { namespace } = parseChainId(chain);
     if (!NAMESPACE_CONFIG[namespace]) {
@@ -35,8 +35,7 @@ export async function cmdPair(args) {
     byNamespace[namespace].push(chain);
   }
 
-  // Build required namespaces
-  const requiredNamespaces = {};
+  const requiredNamespaces: Record<string, { chains: string[]; methods: string[]; events: string[] }> = {};
   for (const [ns, nsChains] of Object.entries(byNamespace)) {
     requiredNamespaces[ns] = {
       chains: nsChains,
@@ -47,15 +46,12 @@ export async function cmdPair(args) {
   const client = await getClient();
   const { uri, approval } = await client.connect({ requiredNamespaces });
 
-  // Generate QR code
   const qrPath = join(SESSIONS_DIR, `qr-${Date.now()}.png`);
   mkdirSync(SESSIONS_DIR, { recursive: true });
-  await QRCode.toFile(qrPath, uri, { width: 400, margin: 2 });
+  await QRCode.toFile(qrPath, uri!, { width: 400, margin: 2 });
 
-  // Output immediately so agent can send URI while waiting
   console.log(JSON.stringify({ uri, qrPath, status: "waiting_for_approval" }, null, 2));
 
-  // Wait for approval (blocking)
   try {
     const session = await approval();
     const accounts = Object.values(session.namespaces).flatMap((ns) => ns.accounts || []);
@@ -80,7 +76,7 @@ export async function cmdPair(args) {
       ),
     );
   } catch (err) {
-    console.log(JSON.stringify({ status: "rejected", error: err.message }));
+    console.log(JSON.stringify({ status: "rejected", error: (err as Error).message }));
   }
 
   await client.core.relayer.transportClose();

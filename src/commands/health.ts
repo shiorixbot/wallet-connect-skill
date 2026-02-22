@@ -1,26 +1,20 @@
 /**
- * Session health command — ping a WalletConnect session to check liveness.
- *
- * Uses SignClient.ping({ topic }) which sends a wc_sessionPing request to the
- * connected wallet. Resolves if the wallet responds within the timeout, rejects
- * (or times out) if the session is stale / peer is offline.
- *
- * Options:
- *   --topic <topic>    Check a specific session by topic
- *   --address <0x...>  Check the session that owns this address
- *   --all              Ping all known sessions (reports each)
- *   --clean            Remove dead sessions from sessions.json
+ * Session health command -- ping a WalletConnect session to check liveness.
  */
 
-import { getClient, loadSessions, saveSessions, findSessionByAddress } from "./client.mjs";
-import { redactAddress } from "./helpers.mjs";
+import { getClient } from "../client.js";
+import { loadSessions, saveSessions } from "../storage.js";
+import { findSessionByAddress } from "../client.js";
+import { redactAddress } from "../helpers.js";
+import type { SignClient } from "@walletconnect/sign-client";
+import type { ParsedArgs } from "../types.js";
 
-const PING_TIMEOUT_MS = 15000; // 15s — wallets are usually fast to pong
+const PING_TIMEOUT_MS = 15000;
 
-/**
- * Ping a single session topic. Returns { alive: bool, error?: string }.
- */
-async function pingSession(client, topic) {
+async function pingSession(
+  client: InstanceType<typeof SignClient>,
+  topic: string,
+): Promise<{ alive: boolean; error?: string }> {
   try {
     await Promise.race([
       client.ping({ topic }),
@@ -30,15 +24,14 @@ async function pingSession(client, topic) {
     ]);
     return { alive: true };
   } catch (err) {
-    return { alive: false, error: err.message };
+    return { alive: false, error: (err as Error).message };
   }
 }
 
-export async function cmdHealth(args) {
+export async function cmdHealth(args: ParsedArgs): Promise<void> {
   const sessions = loadSessions();
 
-  // Resolve which topics to ping
-  let topics = [];
+  let topics: string[] = [];
 
   if (args.all) {
     topics = Object.keys(sessions);
@@ -55,7 +48,9 @@ export async function cmdHealth(args) {
   } else if (args.address) {
     const match = findSessionByAddress(sessions, args.address);
     if (!match) {
-      console.error(JSON.stringify({ error: "No session found for address", address: args.address }));
+      console.error(
+        JSON.stringify({ error: "No session found for address", address: args.address }),
+      );
       process.exit(1);
     }
     topics = [match.topic];
@@ -67,17 +62,15 @@ export async function cmdHealth(args) {
   }
 
   const client = await getClient();
-  const results = [];
-  const deadTopics = [];
+  const results: Record<string, unknown>[] = [];
+  const deadTopics: string[] = [];
 
   for (const topic of topics) {
     const session = sessions[topic];
     const accounts = session.accounts || [];
     const peerName = session.peerName || "unknown";
 
-    process.stderr.write(
-      JSON.stringify({ pinging: topic, peer: peerName }) + "\n",
-    );
+    process.stderr.write(JSON.stringify({ pinging: topic, peer: peerName }) + "\n");
 
     const { alive, error } = await pingSession(client, topic);
 
@@ -86,8 +79,8 @@ export async function cmdHealth(args) {
       return redactAddress(parts.slice(2).join(":"));
     });
 
-    const entry = {
-      topic: topic.slice(0, 16) + "…",
+    const entry: Record<string, unknown> = {
+      topic: topic.slice(0, 16) + "...",
       fullTopic: topic,
       peerName,
       accounts: shortAddresses,
@@ -102,7 +95,6 @@ export async function cmdHealth(args) {
     }
   }
 
-  // Clean dead sessions if requested
   let cleaned = 0;
   if (args.clean && deadTopics.length > 0) {
     const updated = { ...sessions };
@@ -113,7 +105,7 @@ export async function cmdHealth(args) {
     cleaned = deadTopics.length;
   }
 
-  const output = {
+  const output: Record<string, unknown> = {
     checked: results.length,
     alive: results.filter((r) => r.alive).length,
     dead: results.filter((r) => !r.alive).length,

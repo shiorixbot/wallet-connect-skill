@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "oxlint scripts/",
-    "lint:fix": "oxlint scripts/ --fix",
-    "format": "oxfmt scripts/",
-    "format:check": "oxfmt scripts/ --check",
-    "check": "node scripts/wallet.mjs --help"
+    "start": "tsx src/cli.ts",
+    "lint": "oxlint src/",
+    "lint:fix": "oxlint src/ --fix",
+    "format": "oxfmt src/",
+    "format:check": "oxfmt src/ --check",
+    "check": "tsx src/cli.ts --help",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.14",
@@ -17,10 +19,14 @@
     "@walletconnect/utils": "^2.17.0",
     "bs58": "^6.0.0",
     "qrcode": "^1.5.4",
+    "tsx": "^4.19.0",
     "viem": "^2.45.3"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.5",
     "oxfmt": "^0.33.0",
-    "oxlint": "^1.48.0"
+    "oxlint": "^1.48.0",
+    "typescript": "^5.7.0"
   }
 }

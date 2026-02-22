@@ -7,20 +7,16 @@ import bs58 from "bs58";
 import { normalize } from "viem/ens";
 import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
-
-// --- Account lookup ---
+import type { SignClient } from "@walletconnect/sign-client";
+import type { Sessions } from "./types.js";
 
 /**
  * Find an account in session matching a namespace (e.g. "eip155" or "solana").
- * If chainHint is a full chain id like "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", matches exactly.
- * If just a namespace like "solana", matches any account starting with it.
  */
-export function findAccount(accounts, chainHint) {
+export function findAccount(accounts: string[], chainHint: string | undefined): string | null {
   if (!chainHint) return accounts[0] || null;
-  // Full chain id match first
   const exact = accounts.find((a) => a.startsWith(chainHint + ":") || a.startsWith(chainHint));
   if (exact) return exact;
-  // Namespace prefix match
   const ns = chainHint.split(":")[0];
   return accounts.find((a) => a.startsWith(ns + ":")) || null;
 }
@@ -28,7 +24,7 @@ export function findAccount(accounts, chainHint) {
 /**
  * Parse an account string into { namespace, reference, address, chainId }.
  */
-export function parseAccount(accountStr) {
+export function parseAccount(accountStr: string) {
   const parsed = parseAccountId(accountStr);
   return {
     ...parsed,
@@ -37,47 +33,38 @@ export function parseAccount(accountStr) {
   };
 }
 
-// --- Address formatting ---
-
 /**
  * Redact middle of an address: 0xC36edF48...3db87e81b
- * Shows first `keep` and last `keep` chars after any prefix.
  */
-export function redactAddress(address, keep = 7) {
+export function redactAddress(address: string, keep = 7): string {
   if (!address) return address;
-  // For 0x-prefixed (EVM)
   if (address.startsWith("0x")) {
     const hex = address.slice(2);
     if (hex.length <= keep * 2) return address;
     return `0x${hex.slice(0, keep)}...${hex.slice(-keep)}`;
   }
-  // For base58 (Solana) or other
   if (address.length <= keep * 2) return address;
   return `${address.slice(0, keep)}...${address.slice(-keep)}`;
 }
 
-// --- Message encoding ---
-
 /**
  * Encode a UTF-8 message for EVM personal_sign (hex).
  */
-export function encodeEvmMessage(message) {
+export function encodeEvmMessage(message: string): string {
   return "0x" + Buffer.from(message, "utf8").toString("hex");
 }
 
 /**
  * Encode a UTF-8 message for Solana signMessage (bs58).
  */
-export function encodeSolMessage(message) {
+export function encodeSolMessage(message: string): string {
   return bs58.encode(Buffer.from(message, "utf8"));
 }
-
-// --- Session helpers ---
 
 /**
  * Get session data or exit with error.
  */
-export function requireSession(sessions, topic) {
+export function requireSession(sessions: Sessions, topic: string): Sessions[string] {
   const data = sessions[topic];
   if (!data) {
     console.error(JSON.stringify({ error: "Session not found", topic }));
@@ -89,7 +76,11 @@ export function requireSession(sessions, topic) {
 /**
  * Require an account matching a chain hint in session, or exit.
  */
-export function requireAccount(sessionData, chainHint, label = "matching") {
+export function requireAccount(
+  sessionData: Sessions[string],
+  chainHint: string,
+  label = "matching",
+): string {
   const account = findAccount(sessionData.accounts, chainHint);
   if (!account) {
     console.error(JSON.stringify({ error: `No ${label} account found`, chainHint }));
@@ -98,12 +89,10 @@ export function requireAccount(sessionData, chainHint, label = "matching") {
   return account;
 }
 
-// --- ENS Resolution ---
-
 /**
  * Resolve an ENS name to an EVM address. Pass-through if not .eth.
  */
-export async function resolveAddress(addressOrEns) {
+export async function resolveAddress(addressOrEns: string): Promise<string> {
   if (!addressOrEns.endsWith(".eth")) return addressOrEns;
   const client = createPublicClient({ chain: mainnet, transport: http() });
   const resolved = await client.getEnsAddress({ name: normalize(addressOrEns) });
@@ -111,16 +100,14 @@ export async function resolveAddress(addressOrEns) {
   return resolved;
 }
 
-// --- Request with Timeout ---
-
 /**
  * Wrap client.request with timeout and periodic polling status on stderr.
  */
 export async function requestWithTimeout(
-  client,
-  requestParams,
+  client: InstanceType<typeof SignClient>,
+  requestParams: Parameters<InstanceType<typeof SignClient>["request"]>[0],
   { pollIntervalMs = 10000, timeoutMs = 300000 } = {},
-) {
+): Promise<unknown> {
   const start = Date.now();
 
   const pollTimer = setInterval(() => {
@@ -133,7 +120,7 @@ export async function requestWithTimeout(
       client.request(requestParams),
       new Promise((_, reject) => {
         setTimeout(
-          () => reject(new Error("Request timed out after 5 minutes — user did not respond")),
+          () => reject(new Error("Request timed out after 5 minutes -- user did not respond")),
           timeoutMs,
         );
       }),

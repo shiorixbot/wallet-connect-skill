@@ -1,18 +1,19 @@
 /**
- * Balance command — check wallet balances via public RPC (no wallet interaction needed).
+ * Balance command -- check wallet balances via public RPC (no wallet interaction needed).
  * Supports EVM (ETH + ERC-20) and Solana (SOL + SPL tokens).
  */
 
 import { createPublicClient, http, formatUnits, formatEther } from "viem";
 import { mainnet, arbitrum, base, optimism, polygon, bsc } from "viem/chains";
+import type { Chain } from "viem";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import { loadSessions } from "./client.mjs";
-import { requireSession, findAccount, parseAccount } from "./helpers.mjs";
-import { getTokensForChain } from "./tokens.mjs";
+import { loadSessions } from "../storage.js";
+import { requireSession, findAccount, parseAccount } from "../helpers.js";
+import { getTokensForChain } from "./tokens.js";
+import type { ParsedArgs, BalanceResult } from "../types.js";
 
-// Public RPC endpoints per chain
-const EVM_CHAINS = {
+const EVM_CHAINS: Record<string, { chain: Chain; rpc: string; native: string }> = {
   "eip155:1": { chain: mainnet, rpc: "https://eth.llamarpc.com", native: "ETH" },
   "eip155:42161": { chain: arbitrum, rpc: "https://arb1.arbitrum.io/rpc", native: "ETH" },
   "eip155:8453": { chain: base, rpc: "https://mainnet.base.org", native: "ETH" },
@@ -21,16 +22,24 @@ const EVM_CHAINS = {
   "eip155:56": { chain: bsc, rpc: "https://bsc-dataseed.binance.org", native: "BNB" },
 };
 
-const SOLANA_RPC = {
+const SOLANA_RPC: Record<string, string> = {
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
 };
 
-// --- EVM balance ---
+const erc20Abi = [
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
 
-async function getEvmBalance(address, chainId) {
+async function getEvmBalance(address: string, chainId: string): Promise<BalanceResult> {
   const chainConfig = EVM_CHAINS[chainId];
   if (!chainConfig) {
-    return { error: `Unsupported EVM chain: ${chainId}` };
+    return { chain: chainId, address, balances: [], error: `Unsupported EVM chain: ${chainId}` };
   }
 
   const client = createPublicClient({
@@ -38,39 +47,27 @@ async function getEvmBalance(address, chainId) {
     transport: http(chainConfig.rpc),
   });
 
-  const result = { chain: chainId, address, balances: [] };
+  const result: BalanceResult = { chain: chainId, address, balances: [] };
 
-  // Native balance
   try {
-    const rawBalance = await client.getBalance({ address });
+    const rawBalance = await client.getBalance({ address: address as `0x${string}` });
     result.balances.push({
       token: chainConfig.native,
       balance: formatEther(rawBalance),
       raw: rawBalance.toString(),
     });
   } catch (err) {
-    result.balances.push({ token: chainConfig.native, error: err.message });
+    result.balances.push({ token: chainConfig.native, error: (err as Error).message });
   }
-
-  // ERC-20 token balances
-  const erc20Abi = [
-    {
-      name: "balanceOf",
-      type: "function",
-      stateMutability: "view",
-      inputs: [{ name: "account", type: "address" }],
-      outputs: [{ name: "", type: "uint256" }],
-    },
-  ];
 
   const tokens = getTokensForChain(chainId);
   for (const token of tokens) {
     try {
       const rawBalance = await client.readContract({
-        address: token.address,
+        address: token.address as `0x${string}`,
         abi: erc20Abi,
         functionName: "balanceOf",
-        args: [address],
+        args: [address as `0x${string}`],
       });
       result.balances.push({
         token: token.symbol,
@@ -78,26 +75,23 @@ async function getEvmBalance(address, chainId) {
         raw: rawBalance.toString(),
       });
     } catch (err) {
-      result.balances.push({ token: token.symbol, error: err.message });
+      result.balances.push({ token: token.symbol, error: (err as Error).message });
     }
   }
 
   return result;
 }
 
-// --- Solana balance ---
-
-async function getSolanaBalance(address, chainId) {
+async function getSolanaBalance(address: string, chainId: string): Promise<BalanceResult> {
   const rpcUrl = SOLANA_RPC[chainId];
   if (!rpcUrl) {
-    return { error: `Unsupported Solana chain: ${chainId}` };
+    return { chain: chainId, address, balances: [], error: `Unsupported Solana chain: ${chainId}` };
   }
 
   const connection = new Connection(rpcUrl, "confirmed");
   const pubkey = new PublicKey(address);
-  const result = { chain: chainId, address, balances: [] };
+  const result: BalanceResult = { chain: chainId, address, balances: [] };
 
-  // Native SOL
   try {
     const lamports = await connection.getBalance(pubkey);
     result.balances.push({
@@ -106,10 +100,9 @@ async function getSolanaBalance(address, chainId) {
       raw: lamports.toString(),
     });
   } catch (err) {
-    result.balances.push({ token: "SOL", error: err.message });
+    result.balances.push({ token: "SOL", error: (err as Error).message });
   }
 
-  // SPL tokens
   const tokens = getTokensForChain(chainId);
   for (const token of tokens) {
     try {
@@ -135,13 +128,10 @@ async function getSolanaBalance(address, chainId) {
   return result;
 }
 
-// --- Command entry ---
-
-export async function cmdBalance(args) {
+export async function cmdBalance(args: ParsedArgs): Promise<void> {
   const sessions = loadSessions();
 
-  // Determine addresses to check
-  let accountsToCheck = [];
+  let accountsToCheck: { address: string; chain: string }[] = [];
 
   if (args.topic) {
     const sessionData = requireSession(sessions, args.topic);
@@ -164,11 +154,9 @@ export async function cmdBalance(args) {
       }
     }
   } else if (args.address) {
-    // Direct address lookup — infer chain from args.chain or default to ETH
     const chain = args.chain || "eip155:1";
     accountsToCheck.push({ address: args.address, chain });
   } else {
-    // No session/address — check all session accounts
     const chain = args.chain;
     for (const [, sessionData] of Object.entries(sessions)) {
       for (const acctStr of sessionData.accounts || []) {
@@ -190,8 +178,7 @@ export async function cmdBalance(args) {
     return;
   }
 
-  // Deduplicate
-  const seen = new Set();
+  const seen = new Set<string>();
   accountsToCheck = accountsToCheck.filter(({ address, chain }) => {
     const key = `${chain}:${address.toLowerCase()}`;
     if (seen.has(key)) return false;
@@ -199,14 +186,14 @@ export async function cmdBalance(args) {
     return true;
   });
 
-  const results = [];
+  const results: BalanceResult[] = [];
   for (const { address, chain } of accountsToCheck) {
     if (chain.startsWith("solana:")) {
       results.push(await getSolanaBalance(address, chain));
     } else if (chain.startsWith("eip155:")) {
       results.push(await getEvmBalance(address, chain));
     } else {
-      results.push({ chain, address, error: `Unknown namespace for chain ${chain}` });
+      results.push({ chain, address, balances: [], error: `Unknown namespace for chain ${chain}` });
     }
   }
 

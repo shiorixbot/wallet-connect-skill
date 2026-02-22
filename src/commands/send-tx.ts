@@ -1,16 +1,17 @@
 /**
- * Send transaction command — native or ERC-20 token transfers (EVM + Solana).
+ * Send transaction command -- native or ERC-20 token transfers (EVM + Solana).
  */
 
-import { getClient, loadSessions } from "./client.mjs";
+import { getClient } from "../client.js";
+import { loadSessions } from "../storage.js";
 import {
   requireSession,
   requireAccount,
   parseAccount,
   resolveAddress,
   requestWithTimeout,
-} from "./helpers.mjs";
-import { getTokenAddress, getTokenDecimals } from "./tokens.mjs";
+} from "../helpers.js";
+import { getTokenAddress, getTokenDecimals } from "./tokens.js";
 import {
   Connection,
   PublicKey,
@@ -25,17 +26,19 @@ import {
   createTransferInstruction,
   createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
+import type { SignClient } from "@walletconnect/sign-client";
+import type { ParsedArgs, Session } from "../types.js";
 
-// Solana RPC endpoints
-const SOLANA_RPC = {
+const SOLANA_RPC: Record<string, string> = {
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
 };
 
-// Token metadata is centralized in tokens.mjs
-
-// --- Solana send ---
-
-async function sendSolana(client, args, sessionData, chain) {
+async function sendSolana(
+  client: InstanceType<typeof SignClient>,
+  args: ParsedArgs,
+  sessionData: Session,
+  chain: string,
+): Promise<void> {
   const accountStr = requireAccount(sessionData, chain, "Solana");
   const { address: fromAddr } = parseAccount(accountStr);
 
@@ -47,13 +50,12 @@ async function sendSolana(client, args, sessionData, chain) {
 
   const connection = new Connection(rpcUrl, "confirmed");
   const fromPubkey = new PublicKey(fromAddr);
-  const toPubkey = new PublicKey(args.to);
+  const toPubkey = new PublicKey(args.to!);
 
   const instructions = [];
   let tokenLabel = "SOL";
 
   if (args.token && args.token !== "SOL") {
-    // SPL token transfer
     const mintAddr = getTokenAddress(args.token, chain);
     if (!mintAddr) {
       console.error(JSON.stringify({ error: `Token ${args.token} not supported on ${chain}` }));
@@ -62,33 +64,25 @@ async function sendSolana(client, args, sessionData, chain) {
 
     const mintPubkey = new PublicKey(mintAddr);
     const decimals = getTokenDecimals(args.token);
-    const amount = BigInt(Math.round(parseFloat(args.amount) * 10 ** decimals));
+    const amount = BigInt(Math.round(parseFloat(args.amount!) * 10 ** decimals));
 
     const fromAta = getAssociatedTokenAddressSync(mintPubkey, fromPubkey);
     const toAta = getAssociatedTokenAddressSync(mintPubkey, toPubkey);
 
-    // Check if recipient ATA exists, create if not
     const toAtaInfo = await connection.getAccountInfo(toAta);
     if (!toAtaInfo) {
       instructions.push(
-        createAssociatedTokenAccountInstruction(
-          fromPubkey, // payer
-          toAta, // ata
-          toPubkey, // owner
-          mintPubkey, // mint
-        ),
+        createAssociatedTokenAccountInstruction(fromPubkey, toAta, toPubkey, mintPubkey),
       );
     }
 
     instructions.push(createTransferInstruction(fromAta, toAta, fromPubkey, amount));
     tokenLabel = args.token;
   } else {
-    // Native SOL transfer
     const lamports = Math.round(parseFloat(args.amount || "0") * LAMPORTS_PER_SOL);
     instructions.push(SystemProgram.transfer({ fromPubkey, toPubkey, lamports }));
   }
 
-  // Add priority fee (median of recent fees)
   try {
     const recentFees = await connection.getRecentPrioritizationFees();
     const feeValues = recentFees
@@ -103,10 +97,8 @@ async function sendSolana(client, args, sessionData, chain) {
     /* skip priority fee on error */
   }
 
-  // Fetch recent blockhash
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
-  // Build as VersionedTransaction (v0)
   const messageV0 = new TransactionMessage({
     payerKey: fromPubkey,
     recentBlockhash: blockhash,
@@ -116,9 +108,8 @@ async function sendSolana(client, args, sessionData, chain) {
   const vtx = new VersionedTransaction(messageV0);
   const serialized = Buffer.from(vtx.serialize()).toString("base64");
 
-  // Request wallet to sign AND send (wallet broadcasts)
   const result = await requestWithTimeout(client, {
-    topic: args.topic,
+    topic: args.topic!,
     chainId: chain,
     request: {
       method: "solana_signAndSendTransaction",
@@ -126,7 +117,8 @@ async function sendSolana(client, args, sessionData, chain) {
     },
   });
 
-  const txid = result.signature || result;
+  const txResult = result as { signature?: string } | string;
+  const txid = typeof txResult === "string" ? txResult : txResult.signature || String(txResult);
 
   console.log(
     JSON.stringify({
@@ -142,19 +134,21 @@ async function sendSolana(client, args, sessionData, chain) {
   );
 }
 
-// --- EVM send ---
-
-async function sendEvm(client, args, sessionData, chain) {
+async function sendEvm(
+  client: InstanceType<typeof SignClient>,
+  args: ParsedArgs,
+  sessionData: Session,
+  chain: string,
+): Promise<void> {
   const accountStr = requireAccount(sessionData, chain, "EVM");
   const { address: from } = parseAccount(accountStr);
 
-  // Resolve ENS name if needed
-  const resolvedTo = await resolveAddress(args.to);
+  const resolvedTo = await resolveAddress(args.to!);
   if (resolvedTo !== args.to) {
     console.error(JSON.stringify({ ens: args.to, resolved: resolvedTo }));
   }
 
-  let tx;
+  let tx: Record<string, string>;
   if (args.token && args.token !== "ETH") {
     const tokenAddr = getTokenAddress(args.token, chain);
     if (!tokenAddr) {
@@ -163,7 +157,7 @@ async function sendEvm(client, args, sessionData, chain) {
     }
 
     const decimals = getTokenDecimals(args.token);
-    const amount = BigInt(Math.round(parseFloat(args.amount) * 10 ** decimals));
+    const amount = BigInt(Math.round(parseFloat(args.amount!) * 10 ** decimals));
     const toAddr = resolvedTo.replace("0x", "").padStart(64, "0");
     const amountHex = amount.toString(16).padStart(64, "0");
     const data = `0xa9059cbb${toAddr}${amountHex}`;
@@ -179,7 +173,7 @@ async function sendEvm(client, args, sessionData, chain) {
   }
 
   const txHash = await requestWithTimeout(client, {
-    topic: args.topic,
+    topic: args.topic!,
     chainId: chain,
     request: {
       method: "eth_sendTransaction",
@@ -201,9 +195,7 @@ async function sendEvm(client, args, sessionData, chain) {
   );
 }
 
-// --- Entry ---
-
-export async function cmdSendTx(args) {
+export async function cmdSendTx(args: ParsedArgs): Promise<void> {
   if (!args.topic) {
     console.error(JSON.stringify({ error: "--topic required" }));
     process.exit(1);
@@ -220,7 +212,7 @@ export async function cmdSendTx(args) {
       await sendEvm(client, args, sessionData, chain);
     }
   } catch (err) {
-    console.log(JSON.stringify({ status: "rejected", error: err.message }));
+    console.log(JSON.stringify({ status: "rejected", error: (err as Error).message }));
   }
 
   await client.core.relayer.transportClose();

@@ -21,20 +21,26 @@ wallet-connect-skill/
 ├── README.md             # Project overview
 ├── LICENSE
 ├── package.json          # Root deps (runtime + dev)
+├── tsconfig.json         # TypeScript config (noEmit — tsx runs directly)
 ├── .env.example          # Required env vars template
 ├── .github/workflows/
-│   └── ci.yml            # CI: lint + check on Node 20/22
-├── scripts/
-│   ├── wallet.mjs        # CLI entry point
-│   └── lib/
-│       ├── client.mjs    # WC SignClient singleton + session persistence
-│       ├── helpers.mjs   # Shared utils (ENS, timeout, encoding, account lookup)
-│       ├── pair.mjs      # Pairing command
-│       ├── auth.mjs      # Authentication (consent sign)
-│       ├── health.mjs           # Session health detection (wc_ping)
-│       ├── sign.mjs             # Message signing (EVM + Solana)
-│       ├── send-tx.mjs          # Transaction sending (native + token, EVM + Solana)
-│       └── tokens.mjs           # Token metadata (addresses, decimals)
+│   └── ci.yml            # CI: lint + typecheck + check on Node 20/22
+├── src/
+│   ├── cli.ts            # CLI entry point
+│   ├── types.ts          # Shared TypeScript interfaces
+│   ├── storage.ts        # Session persistence (load/save)
+│   ├── client.ts         # WC SignClient singleton + address lookup
+│   ├── helpers.ts        # Shared utils (ENS, timeout, encoding, account lookup)
+│   └── commands/
+│       ├── pair.ts       # Pairing command
+│       ├── auth.ts       # Authentication (consent sign)
+│       ├── sign.ts       # Message signing (EVM + Solana)
+│       ├── sign-typed-data.ts # EIP-712 typed data signing (EVM only)
+│       ├── send-tx.ts    # Transaction sending (native + token, EVM + Solana)
+│       ├── balance.ts    # Balance checking (EVM + Solana)
+│       ├── health.ts     # Session health detection (wc_ping)
+│       ├── sessions.ts   # Session management (list, whoami, delete)
+│       └── tokens.ts     # Token metadata (addresses, decimals)
 └── references/
     └── chains.md         # Supported chain IDs and tokens
 ```
@@ -52,36 +58,36 @@ Requires:
 ## Quick Start
 
 ```bash
-node scripts/wallet.mjs <command> [args]
+tsx src/cli.ts <command> [args]
 ```
 
 ## Commands
 
 ### Pair (one-time onboarding)
 ```bash
-node scripts/wallet.mjs pair --chains eip155:1,eip155:42161,solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+tsx src/cli.ts pair --chains eip155:1,eip155:42161,solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
 ```
 Output: `{ uri, qrPath, topic }`
 
 ### Authenticate (consent sign)
 ```bash
-node scripts/wallet.mjs auth --topic <topic>
+tsx src/cli.ts auth --topic <topic>
 ```
 Output: `{ address, signature, nonce }` after user approves in wallet.
 
 ### Check Balances (no wallet interaction)
 ```bash
 # All balances for all accounts in a session
-node scripts/wallet.mjs balance --topic <topic>
+tsx src/cli.ts balance --topic <topic>
 
 # Single chain
-node scripts/wallet.mjs balance --topic <topic> --chain eip155:42161
+tsx src/cli.ts balance --topic <topic> --chain eip155:42161
 
 # Direct address (no session needed)
-node scripts/wallet.mjs balance --address 0xC36edF48e21cf395B206352A1819DE658fD7f988 --chain eip155:1
+tsx src/cli.ts balance --address 0xC36edF48e21cf395B206352A1819DE658fD7f988 --chain eip155:1
 
 # All sessions, all chains
-node scripts/wallet.mjs balance
+tsx src/cli.ts balance
 ```
 Output: `[{ chain, address, balances: [{ token, balance, raw }] }]`
 
@@ -90,20 +96,20 @@ Queries public RPC endpoints — no wallet approval needed.
 ### List Supported Tokens
 ```bash
 # Default: Ethereum mainnet
-node scripts/wallet.mjs tokens
+tsx src/cli.ts tokens
 
 # Other chains
-node scripts/wallet.mjs tokens --chain eip155:42161    # Arbitrum
-node scripts/wallet.mjs tokens --chain eip155:10       # Optimism
-node scripts/wallet.mjs tokens --chain eip155:137      # Polygon
-node scripts/wallet.mjs tokens --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+tsx src/cli.ts tokens --chain eip155:42161    # Arbitrum
+tsx src/cli.ts tokens --chain eip155:10       # Optimism
+tsx src/cli.ts tokens --chain eip155:137      # Polygon
+tsx src/cli.ts tokens --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
 ```
 Output: `{ chain, tokens: [{ symbol, name, decimals, address }] }`
 
 ### Delete Session
 ```bash
-node scripts/wallet.mjs delete-session --topic <topic>
-node scripts/wallet.mjs delete-session --address 0xADDRESS
+tsx src/cli.ts delete-session --topic <topic>
+tsx src/cli.ts delete-session --address 0xADDRESS
 ```
 Removes the session from `~/.agent-wallet/sessions.json`.
 Output: `{ status: "deleted", topic, peerName, accounts }`
@@ -111,14 +117,14 @@ Output: `{ status: "deleted", topic, peerName, accounts }`
 ### Check Session Health
 ```bash
 # Ping a specific session
-node scripts/wallet.mjs health --topic <topic>
-node scripts/wallet.mjs health --address 0xADDR
+tsx src/cli.ts health --topic <topic>
+tsx src/cli.ts health --address 0xADDR
 
 # Ping all sessions
-node scripts/wallet.mjs health --all
+tsx src/cli.ts health --all
 
 # Ping all and remove dead sessions automatically
-node scripts/wallet.mjs health --all --clean
+tsx src/cli.ts health --all --clean
 ```
 
 Output:
@@ -140,38 +146,56 @@ Uses `wc_sessionPing` (15s timeout per session). A dead session means the wallet
 ### Send Transaction
 ```bash
 # EVM: send ETH (supports ENS names)
-node scripts/wallet.mjs send-tx --topic <topic> --chain eip155:1 \
+tsx src/cli.ts send-tx --topic <topic> --chain eip155:1 \
   --to vitalik.eth --amount 0.01
 
 # EVM: send USDC on Arbitrum
-node scripts/wallet.mjs send-tx --topic <topic> --chain eip155:42161 \
+tsx src/cli.ts send-tx --topic <topic> --chain eip155:42161 \
   --to 0xRECIPIENT --token USDC --amount 5.0
 
 # EVM: send WETH on Optimism
-node scripts/wallet.mjs send-tx --topic <topic> --chain eip155:10 \
+tsx src/cli.ts send-tx --topic <topic> --chain eip155:10 \
   --to 0xRECIPIENT --token WETH --amount 0.01
 
 # EVM: send DAI on Polygon
-node scripts/wallet.mjs send-tx --topic <topic> --chain eip155:137 \
+tsx src/cli.ts send-tx --topic <topic> --chain eip155:137 \
   --to 0xRECIPIENT --token DAI --amount 100.0
 
 # Solana: send native SOL
-node scripts/wallet.mjs send-tx --topic <topic> --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp \
+tsx src/cli.ts send-tx --topic <topic> --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp \
   --to <PUBKEY> --amount 0.01
 
 # Solana: send SPL USDC
-node scripts/wallet.mjs send-tx --topic <topic> --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp \
+tsx src/cli.ts send-tx --topic <topic> --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp \
   --to <PUBKEY> --token USDC --amount 1.0
 ```
 
 ### Sign Message
 ```bash
 # EVM (personal_sign)
-node scripts/wallet.mjs sign --topic <topic> --message "Hello World"
+tsx src/cli.ts sign --topic <topic> --message "Hello World"
 
 # Solana (solana_signMessage, bs58-encoded)
-node scripts/wallet.mjs sign --topic <topic> --message "Hello World" --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
+tsx src/cli.ts sign --topic <topic> --message "Hello World" --chain solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp
 ```
+
+### Sign Typed Data (EIP-712)
+Signs structured data via `eth_signTypedData_v4`. EVM only.
+
+```bash
+# Inline JSON
+tsx src/cli.ts sign-typed-data --topic <topic> --data '{"domain":{"name":"MyApp","version":"1","chainId":1},"types":{"Mail":[{"name":"from","type":"address"},{"name":"contents","type":"string"}]},"message":{"from":"0xabc...","contents":"Hello"}}'
+
+# From file
+tsx src/cli.ts sign-typed-data --topic <topic> --data @/path/to/typed-data.json
+
+# Explicit chain
+tsx src/cli.ts sign-typed-data --topic <topic> --data @payload.json --chain eip155:137
+```
+
+`primaryType` is inferred automatically from the `types` object (first non-`EIP712Domain` key) if not provided.
+
+Output: `{ status, address, signature, chain, primaryType }`
 
 ## Features
 
@@ -213,7 +237,7 @@ When user asks to pair their wallet:
 
 ## Background Monitoring
 
-When running wallet tasks (pairing, signing, transactions), set up periodic monitoring for pending WalletConnect messages and session events. Poll by re-running the relevant `wallet.mjs` commands or checking for active `wallet.mjs` processes.
+When running wallet tasks (pairing, signing, transactions), set up periodic monitoring for pending WalletConnect messages and session events. Poll by re-running the relevant `cli.ts` commands or checking for active `cli.ts` processes.
 
 **OpenClaw agents:** Add a monitor entry to `HEARTBEAT.md`:
 
@@ -221,7 +245,7 @@ When running wallet tasks (pairing, signing, transactions), set up periodic moni
 ## WalletConnect Session Monitor
 - Check for pending WalletConnect messages/events
 - If a signing request result or session event came in, report to user
-- Check running exec sessions related to wallet.mjs (process list)
+- Check running exec sessions related to cli.ts (process list)
 ```
 
 **Other agents:** Use whatever periodic task mechanism your platform provides (cron, background loop, etc.) to poll for session updates.
@@ -240,12 +264,12 @@ Tokens supported out of the box:
 
 ## Adding New Tokens
 
-Token metadata is centralized in `scripts/lib/tokens.mjs`. To add a new token:
+Token metadata is centralized in `src/commands/tokens.ts`. To add a new token:
 
-1. Open `scripts/lib/tokens.mjs`
+1. Open `src/commands/tokens.ts`
 2. Add an entry to the `TOKENS` object:
 
-```js
+```ts
 OP: {
   name: "Optimism",
   decimals: 18,
@@ -257,7 +281,7 @@ OP: {
 
 3. The token is immediately available for `send-tx --token OP` and shown in `balance` and `tokens` commands
 
-Helper functions exported from `tokens.mjs`:
+Helper functions exported from `tokens.ts`:
 - `getTokenAddress(symbol, chainId)` — contract/mint address for a chain
 - `getTokenDecimals(symbol)` — decimal places (defaults to 18)
 - `isSplToken(symbol, chainId)` — check if it's an SPL token
@@ -276,6 +300,7 @@ npm run lint          # oxlint check
 npm run lint:fix      # oxlint auto-fix
 npm run format        # oxfmt format
 npm run format:check  # oxfmt check (CI)
+npm run typecheck     # TypeScript type checking (tsc --noEmit)
 npm run check         # Verify CLI loads
 ```
 

@@ -3,13 +3,10 @@
  */
 
 import { SignClient } from "@walletconnect/sign-client";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { mkdirSync } from "fs";
 import { join } from "path";
-
-export const SESSIONS_DIR = join(process.env.HOME || "/tmp", ".agent-wallet");
-export const SESSIONS_FILE = join(SESSIONS_DIR, "sessions.json");
-
-// --- Metadata from env or defaults ---
+import type { Sessions } from "./types.js";
+import { SESSIONS_DIR } from "./storage.js";
 
 function getMetadata() {
   return {
@@ -20,43 +17,21 @@ function getMetadata() {
   };
 }
 
-// --- Session persistence ---
-
-export function loadSessions() {
-  if (!existsSync(SESSIONS_FILE)) return {};
-  try {
-    return JSON.parse(readFileSync(SESSIONS_FILE, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-export function saveSessions(sessions) {
-  mkdirSync(SESSIONS_DIR, { recursive: true });
-  writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-}
-
-export function saveSession(topic, data) {
-  const sessions = loadSessions();
-  sessions[topic] = { ...data, updatedAt: new Date().toISOString() };
-  saveSessions(sessions);
-}
-
-// --- Session lookup by address ---
-
 /**
  * Find the most recent session containing the given address (case-insensitive).
  * Matches against the address portion of CAIP-10 account strings.
  * Returns { topic, session } or null.
  */
-export function findSessionByAddress(sessions, address) {
+export function findSessionByAddress(
+  sessions: Sessions,
+  address: string,
+): { topic: string; session: Sessions[string] } | null {
   const needle = address.toLowerCase();
-  const matches = [];
+  const matches: { topic: string; session: Sessions[string] }[] = [];
   for (const [topic, session] of Object.entries(sessions)) {
     const hasMatch = (session.accounts || []).some((acct) => {
-      // CAIP-10: namespace:reference:address — compare the address part
       const parts = acct.split(":");
-      const addr = parts.slice(2).join(":"); // address may contain colons (unlikely but safe)
+      const addr = parts.slice(2).join(":");
       return addr.toLowerCase() === needle;
     });
     if (hasMatch) {
@@ -64,7 +39,6 @@ export function findSessionByAddress(sessions, address) {
     }
   }
   if (matches.length === 0) return null;
-  // Return the most recently updated session
   matches.sort((a, b) =>
     (b.session.updatedAt || b.session.createdAt || "").localeCompare(
       a.session.updatedAt || a.session.createdAt || "",
@@ -73,9 +47,7 @@ export function findSessionByAddress(sessions, address) {
   return matches[0];
 }
 
-// --- WalletConnect client ---
-
-export async function getClient() {
+export async function getClient(): Promise<InstanceType<typeof SignClient>> {
   const projectId = process.env.WALLETCONNECT_PROJECT_ID;
   if (!projectId) {
     console.error(JSON.stringify({ error: "WALLETCONNECT_PROJECT_ID env var required" }));

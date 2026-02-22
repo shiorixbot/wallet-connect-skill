@@ -1,8 +1,9 @@
 /**
- * Sign command — sign an arbitrary message (EVM or Solana).
+ * Sign command -- sign an arbitrary message (EVM or Solana).
  */
 
-import { getClient, loadSessions } from "./client.mjs";
+import { getClient } from "../client.js";
+import { loadSessions } from "../storage.js";
 import {
   requireSession,
   findAccount,
@@ -10,9 +11,10 @@ import {
   encodeEvmMessage,
   encodeSolMessage,
   requestWithTimeout,
-} from "./helpers.mjs";
+} from "../helpers.js";
+import type { ParsedArgs } from "../types.js";
 
-export async function cmdSign(args) {
+export async function cmdSign(args: ParsedArgs): Promise<void> {
   if (!args.topic || !args.message) {
     console.error(JSON.stringify({ error: "--topic and --message required" }));
     process.exit(1);
@@ -21,15 +23,13 @@ export async function cmdSign(args) {
   const client = await getClient();
   const sessionData = requireSession(loadSessions(), args.topic);
 
-  // --chain flag forces a specific chain (e.g. "solana" or "eip155")
   const chainHint = args.chain;
 
-  // Determine which chain to sign on
   const solAccount =
-    findAccount(sessionData.accounts, chainHint?.startsWith("solana") ? chainHint : null) ||
+    findAccount(sessionData.accounts, chainHint?.startsWith("solana") ? chainHint : undefined) ||
     (!chainHint ? findAccount(sessionData.accounts, "solana") : null);
   const evmAccount =
-    findAccount(sessionData.accounts, chainHint?.startsWith("eip155") ? chainHint : null) ||
+    findAccount(sessionData.accounts, chainHint?.startsWith("eip155") ? chainHint : undefined) ||
     (!chainHint ? findAccount(sessionData.accounts, "eip155") : null);
 
   const useSolana = chainHint?.startsWith("solana") || (!chainHint && !evmAccount && solAccount);
