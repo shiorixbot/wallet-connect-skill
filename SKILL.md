@@ -36,6 +36,7 @@ wallet-connect-skill/
 │       ├── auth.ts       # Authentication (consent sign)
 │       ├── sign.ts       # Message signing (EVM + Solana)
 │       ├── sign-typed-data.ts # EIP-712 typed data signing (EVM only)
+│       ├── swap.ts       # Uniswap quote fetching (EVM only, issue #5)
 │       ├── send-tx.ts    # Transaction sending (native + token, EVM + Solana)
 │       ├── balance.ts    # Balance checking (EVM + Solana)
 │       ├── health.ts     # Session health detection (wc_ping)
@@ -142,6 +143,43 @@ Output:
 ```
 
 Uses `wc_sessionPing` (15s timeout per session). A dead session means the wallet is offline or the session was disconnected — safe to `--clean`.
+
+### Swap Quote (Uniswap)
+Fetch a price quote from the Uniswap Trade API. **Quote only — does not execute the swap.**
+
+```bash
+# Quote 0.1 ETH → USDC on Ethereum mainnet
+tsx src/cli.ts swap --token ETH --out USDC --amount 0.1
+
+# With chain (default: eip155:1 Ethereum mainnet)
+tsx src/cli.ts swap --token ETH --out USDC --amount 0.1 --chain eip155:1
+
+# Include swapper address for more accurate gas/routing
+tsx src/cli.ts swap --token ETH --out USDC --amount 0.1 --address 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+
+# USDC → WETH on Arbitrum
+tsx src/cli.ts swap --token USDC --out WETH --amount 100 --chain eip155:42161
+```
+
+Output:
+```json
+{
+  "swap": {
+    "from": { "symbol": "ETH", "address": "0x0000...0000", "amount": "0.1", "rawAmount": "100000000000000000" },
+    "to": { "symbol": "USDC", "address": "0xA0b8...eB48", "amount": "189.45", "minAmount": "188.56", "rawAmount": "189450000" },
+    "chain": "eip155:1",
+    "swapper": null,
+    "gasFeeUSD": "2.15",
+    "priceImpact": "0.05",
+    "routing": "CLASSIC",
+    "requestId": "..."
+  },
+  "note": "Quote only — to execute, use send-tx with the calldata returned by the Uniswap Universal Router."
+}
+```
+
+Supported chains: `eip155:1` (Ethereum), `eip155:42161` (Arbitrum), `eip155:8453` (Base), `eip155:10` (Optimism), `eip155:137` (Polygon).
+Uses `UNISWAP_API_KEY` env var if set; falls back to the demo key from Issue #5.
 
 ### Send Transaction
 ```bash
