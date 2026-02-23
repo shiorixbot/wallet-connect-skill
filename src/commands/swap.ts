@@ -45,7 +45,7 @@ interface ResolvedToken {
   symbol: string;
 }
 
-function resolveToken(symbol: string, chainId: string): ResolvedToken {
+export function resolveToken(symbol: string, chainId: string): ResolvedToken {
   const native = NATIVE_SYMBOLS[chainId] ?? "ETH";
   if (symbol.toUpperCase() === native.toUpperCase() || symbol.toUpperCase() === "ETH") {
     return { address: NATIVE_ADDRESS, decimals: 18, symbol: native };
@@ -61,14 +61,14 @@ function resolveToken(symbol: string, chainId: string): ResolvedToken {
 }
 
 /** Convert human-readable amount (e.g. "0.1") to raw integer string */
-function toRaw(amount: string, decimals: number): string {
+export function toRaw(amount: string, decimals: number): string {
   const [whole = "0", frac = ""] = amount.split(".");
   const fracPadded = (frac + "0".repeat(decimals)).slice(0, decimals);
   return (BigInt(whole) * BigInt(10 ** decimals) + BigInt(fracPadded || "0")).toString();
 }
 
 /** Convert raw integer string to human-readable (trimmed to 6 significant frac digits) */
-function fromRaw(raw: string, decimals: number): string {
+export function fromRaw(raw: string, decimals: number): string {
   const val = BigInt(raw);
   const divisor = BigInt(10 ** decimals);
   const whole = val / divisor;
