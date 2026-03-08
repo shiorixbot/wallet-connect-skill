@@ -16,6 +16,7 @@
  *   delete-session   Remove a saved session
  *   sign-typed-data  Sign EIP-712 typed data (EVM only)
  *   health           Ping session(s) to check liveness (--all, --clean)
+ *   swap             Fetch a Uniswap quote (EVM only)
  */
 
 import { parseArgs } from "util";
@@ -26,6 +27,7 @@ import { cmdSignTypedData } from "./commands/sign-typed-data.js";
 import { cmdSendTx } from "./commands/send-tx.js";
 import { cmdBalance } from "./commands/balance.js";
 import { cmdHealth } from "./commands/health.js";
+import { cmdSwap } from "./commands/swap.js";
 import {
   cmdStatus,
   cmdSessions,
@@ -35,22 +37,11 @@ import {
 } from "./commands/sessions.js";
 import { getTokensForChain } from "./commands/tokens.js";
 import { loadSessions } from "./storage.js";
-import { findSessionByAddress } from "./client.js";
+import { resolveSessionByAddress } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 
 function resolveAddress(args: ParsedArgs): ParsedArgs {
-  if (args.address && !args.topic) {
-    const sessions = loadSessions();
-    const match = findSessionByAddress(sessions, args.address);
-    if (!match) {
-      console.error(
-        JSON.stringify({ error: "No session found for address", address: args.address }),
-      );
-      process.exit(1);
-    }
-    args.topic = match.topic;
-  }
-  return args;
+  return resolveSessionByAddress(args, loadSessions());
 }
 
 async function cmdTokens(args: ParsedArgs): Promise<void> {
@@ -88,6 +79,7 @@ const { positionals, values } = parseArgs({
     message: { type: "string" },
     chain: { type: "string" },
     to: { type: "string" },
+    out: { type: "string" },
     amount: { type: "string" },
     token: { type: "string" },
     data: { type: "string" },
@@ -117,11 +109,13 @@ Commands:
   whoami           Show account info (--topic <topic> | --address <addr>)
   delete-session   Remove a saved session (--topic <topic> | --address <addr>)
   health           Ping session to check liveness (--topic | --address | --all) [--clean]
+  swap             Fetch Uniswap quote --token <in> --out <out> --amount <n> [--chain eip155:1] [--address <addr>]
 
 Options:
   --address <0x...>  Select session by wallet address (case-insensitive)
   --all              (health) Ping all sessions
-  --clean            (health) Remove dead sessions from storage`);
+  --clean            (health) Remove dead sessions from storage
+  --out <symbol>     (swap) Output token symbol (e.g. USDC, WETH)`);
   process.exit(0);
 }
 
@@ -154,6 +148,7 @@ const commands: Record<string, (args: ParsedArgs) => Promise<void>> = {
   whoami: cmdWhoami,
   "delete-session": cmdDeleteSession,
   health: cmdHealth,
+  swap: cmdSwap,
 };
 
 if (!commands[command]) {

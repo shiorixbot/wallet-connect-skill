@@ -28,14 +28,13 @@ export async function cmdAuth(args: ParsedArgs): Promise<void> {
 
   const nonce = randomBytes(16).toString("hex");
   const timestamp = new Date().toISOString();
-  const display = redactAddress(address);
 
   const message = [
     "AgentWallet Authentication",
     "",
     `I authorize this AI agent to request transactions on my behalf.`,
     "",
-    `Address: ${display}`,
+    `Address: ${address}`,
     `Nonce: ${nonce}`,
     `Timestamp: ${timestamp}`,
   ].join("\n");
@@ -62,7 +61,7 @@ export async function cmdAuth(args: ParsedArgs): Promise<void> {
     console.log(
       JSON.stringify({
         status: "authenticated",
-        address: display,
+        address: redactAddress(address),
         signature,
         nonce,
         message,

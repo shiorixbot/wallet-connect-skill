@@ -8,7 +8,8 @@ import { normalize } from "viem/ens";
 import { createPublicClient, http } from "viem";
 import { mainnet } from "viem/chains";
 import type { SignClient } from "@walletconnect/sign-client";
-import type { Sessions } from "./types.js";
+import type { ParsedArgs, Sessions } from "./types.js";
+import { findSessionByAddress } from "./client.js";
 
 /**
  * Find an account in session matching a namespace (e.g. "eip155" or "solana").
@@ -87,6 +88,24 @@ export function requireAccount(
     process.exit(1);
   }
   return account;
+}
+
+/**
+ * Resolve --address to --topic by looking up session storage.
+ * Mutates and returns args. Exits with error if address has no matching session.
+ */
+export function resolveSessionByAddress(args: ParsedArgs, sessions: Sessions): ParsedArgs {
+  if (args.address && !args.topic) {
+    const match = findSessionByAddress(sessions, args.address);
+    if (!match) {
+      console.error(
+        JSON.stringify({ error: "No session found for address", address: args.address }),
+      );
+      process.exit(1);
+    }
+    args.topic = match.topic;
+  }
+  return args;
 }
 
 /**

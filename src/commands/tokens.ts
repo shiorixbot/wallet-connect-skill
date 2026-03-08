@@ -4,6 +4,10 @@
 
 import type { TokenConfig, Token } from "../types.js";
 
+export const SOLANA_RPC: Record<string, string> = {
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
+};
+
 export const TOKENS: Record<string, TokenConfig> = {
   USDC: {
     name: "USD Coin",
