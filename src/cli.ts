@@ -17,6 +17,7 @@
  *   sign-typed-data  Sign EIP-712 typed data (EVM only)
  *   health           Ping session(s) to check liveness (--all, --clean)
  *   swap             Fetch a Uniswap quote (EVM only)
+ *   execute-swap     Execute a Uniswap swap via WalletConnect (EVM only)
  */
 
 import { parseArgs } from "util";
@@ -28,6 +29,7 @@ import { cmdSendTx } from "./commands/send-tx.js";
 import { cmdBalance } from "./commands/balance.js";
 import { cmdHealth } from "./commands/health.js";
 import { cmdSwap } from "./commands/swap.js";
+import { cmdExecuteSwap } from "./commands/execute-swap.js";
 import {
   cmdStatus,
   cmdSessions,
@@ -83,6 +85,8 @@ const { positionals, values } = parseArgs({
     amount: { type: "string" },
     token: { type: "string" },
     data: { type: "string" },
+    slippage: { type: "string" },
+    deadline: { type: "string" },
     all: { type: "boolean" },
     clean: { type: "boolean" },
     help: { type: "boolean", short: "h" },
@@ -110,6 +114,7 @@ Commands:
   delete-session   Remove a saved session (--topic <topic> | --address <addr>)
   health           Ping session to check liveness (--topic | --address | --all) [--clean]
   swap             Fetch Uniswap quote --token <in> --out <out> --amount <n> [--chain eip155:1] [--address <addr>]
+  execute-swap     Execute swap via wallet --token <in> --out <out> --amount <n> --address <addr> [--slippage 0.5] [--deadline 1800]
 
 Options:
   --address <0x...>  Select session by wallet address (case-insensitive)
@@ -149,6 +154,10 @@ const commands: Record<string, (args: ParsedArgs) => Promise<void>> = {
   "delete-session": cmdDeleteSession,
   health: cmdHealth,
   swap: cmdSwap,
+  "execute-swap": (a) => {
+    a = resolveAddress(a);
+    return cmdExecuteSwap(a);
+  },
 };
 
 if (!commands[command]) {

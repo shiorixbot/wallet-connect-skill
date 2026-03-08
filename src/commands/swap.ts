@@ -4,25 +4,27 @@
  * Usage:
  *   tsx src/cli.ts swap --token ETH --out USDC --amount 0.1 [--chain eip155:1] [--address 0x...] [--topic <topic>]
  *
- * Prints a JSON quote. Does NOT execute the swap (use send-tx with the router calldata for that).
+ * Prints a JSON quote with calldata for the Universal Router.
+ * To execute, use: execute-swap --token ETH --out USDC --amount 0.1 --address 0x...
  * Implements issue #5: https://github.com/shiorixbot/wallet-connect-skill/issues/5
  */
 
 import { loadSessions } from "../storage.js";
 import { requireSession, findAccount, parseAccount } from "../helpers.js";
 import { getTokensForChain } from "./tokens.js";
+import { UNIVERSAL_ROUTER_ADDRESS } from "../universal-router.js";
 import type { ParsedArgs } from "../types.js";
 
-const UNISWAP_API_BASE = "https://trade-api.gateway.uniswap.org/v1";
+export const UNISWAP_API_BASE = "https://trade-api.gateway.uniswap.org/v1";
 // Public demo key from Issue #5 — replace via UNISWAP_API_KEY env var for production
-const UNISWAP_API_KEY =
+export const UNISWAP_API_KEY =
   process.env.UNISWAP_API_KEY ?? "XHr6wiQY0GVXwqTmQyW83Prk8vJCgIENlpuwCGuTlhQ";
 
 /** Native token address sentinel (ETH / MATIC / BNB on their respective chains) */
-const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
+export const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /** EVM chain string → Uniswap numeric chain ID */
-const CHAIN_ID_MAP: Record<string, number> = {
+export const CHAIN_ID_MAP: Record<string, number> = {
   "eip155:1": 1,
   "eip155:42161": 42161,
   "eip155:8453": 8453,
@@ -31,7 +33,7 @@ const CHAIN_ID_MAP: Record<string, number> = {
 };
 
 /** Native-token symbols per chain */
-const NATIVE_SYMBOLS: Record<string, string> = {
+export const NATIVE_SYMBOLS: Record<string, string> = {
   "eip155:1": "ETH",
   "eip155:42161": "ETH",
   "eip155:8453": "ETH",
@@ -39,7 +41,7 @@ const NATIVE_SYMBOLS: Record<string, string> = {
   "eip155:137": "POL",
 };
 
-interface ResolvedToken {
+export interface ResolvedToken {
   address: string;
   decimals: number;
   symbol: string;
@@ -81,7 +83,7 @@ export function fromRaw(raw: string, decimals: number): string {
   return fracStr ? `${whole}.${fracStr}` : whole.toString();
 }
 
-interface UniswapQuoteResponse {
+export interface UniswapQuoteResponse {
   quote?: {
     chainId?: number;
     swapper?: string;
@@ -90,16 +92,109 @@ interface UniswapQuoteResponse {
     gasFeeUSD?: string;
     priceImpact?: string;
   };
+  methodParameters?: {
+    calldata: string;
+    value: string;
+    to: string;
+  };
   routing?: string;
   requestId?: string;
+  permit2?: {
+    domain: Record<string, unknown>;
+    types: Record<string, unknown>;
+    values: Record<string, unknown>;
+  };
   [key: string]: unknown;
+}
+
+export interface QuoteRequest {
+  chainId: string;
+  tokenIn: ResolvedToken;
+  tokenOut: ResolvedToken;
+  amount: string;
+  rawAmount: string;
+  swapper: string;
+  slippage?: string;
+}
+
+/**
+ * Resolve the swapper address from args (address, topic/session, or placeholder).
+ * Returns { swapper, isPlaceholder }.
+ */
+export function resolveSwapper(args: ParsedArgs, chainId: string): { swapper: string; isPlaceholder: boolean } {
+  if (args.address) {
+    return { swapper: args.address, isPlaceholder: false };
+  }
+  if (args.topic) {
+    const sessions = loadSessions();
+    const session = requireSession(sessions, args.topic);
+    const acct = findAccount(session.accounts, chainId);
+    if (acct) {
+      const { address } = parseAccount(acct);
+      return { swapper: address, isPlaceholder: false };
+    }
+  }
+  // vitalik.eth as public placeholder — routing works, gas estimates approximate
+  return { swapper: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", isPlaceholder: true };
+}
+
+/**
+ * Fetch a quote (with calldata) from the Uniswap Trade API.
+ * Shared by both `swap` (quote-only) and `execute-swap` (quote + send).
+ */
+export async function fetchUniswapQuote(req: QuoteRequest): Promise<UniswapQuoteResponse> {
+  const numericChainId = CHAIN_ID_MAP[req.chainId];
+  if (!numericChainId) {
+    throw new Error(`Unsupported chain: ${req.chainId}`);
+  }
+
+  const quoteBody: Record<string, unknown> = {
+    type: "EXACT_INPUT",
+    amount: req.rawAmount,
+    tokenInChainId: numericChainId,
+    tokenOutChainId: numericChainId,
+    tokenIn: req.tokenIn.address,
+    tokenOut: req.tokenOut.address,
+    swapper: req.swapper,
+    autoSlippage: "DEFAULT",
+    routingPreference: "BEST_PRICE",
+    generatePermitAsTransaction: false,
+  };
+
+  if (req.slippage && req.slippage !== "auto") {
+    quoteBody.autoSlippage = undefined;
+    quoteBody.slippageTolerance = Number(req.slippage) / 100;
+  }
+
+  const feeBps = Number(process.env.UNISWAP_FEE_BPS ?? "25");
+  const feeRecipient =
+    process.env.UNISWAP_FEE_RECIPIENT ?? "0x349862C428A86660826966fDbC6a2b5A03c57420";
+  if (feeBps > 0) {
+    quoteBody.integratorFees = [{ bips: feeBps, recipient: feeRecipient }];
+  }
+
+  const response = await fetch(`${UNISWAP_API_BASE}/quote`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": UNISWAP_API_KEY,
+      "x-universal-router-version": "2.0",
+    },
+    body: JSON.stringify(quoteBody),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Uniswap API error ${response.status}: ${text}`);
+  }
+
+  return (await response.json()) as UniswapQuoteResponse;
 }
 
 export async function cmdSwap(args: ParsedArgs): Promise<void> {
   const chainId = args.chain ?? "eip155:1";
 
-  const numericChainId = CHAIN_ID_MAP[chainId];
-  if (!numericChainId) {
+  if (!CHAIN_ID_MAP[chainId]) {
     console.error(
       JSON.stringify({
         error: `Unsupported chain: ${chainId}`,
@@ -122,17 +217,6 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
     process.exit(1);
   }
 
-  // Resolve session → swapper address (optional; quote still works without it)
-  let swapper: string | undefined;
-  if (args.address) {
-    swapper = args.address;
-  } else if (args.topic) {
-    const sessions = loadSessions();
-    const session = requireSession(sessions, args.topic);
-    const acct = findAccount(session.accounts, chainId);
-    if (acct) ({ address: swapper } = parseAccount(acct));
-  }
-
   let tokenIn: ResolvedToken;
   let tokenOut: ResolvedToken;
   try {
@@ -144,57 +228,23 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
   }
 
   const rawAmount = toRaw(amount, tokenIn.decimals);
-
-  // Uniswap Trade API requires a swapper address.
-  // If no session/address is provided, use a well-known placeholder so routing still works.
-  // Gas estimates will be approximate.
-  const effectiveSwapper =
-    swapper ?? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"; // vitalik.eth (public placeholder)
-
-  const quoteBody: Record<string, unknown> = {
-    type: "EXACT_INPUT",
-    amount: rawAmount,
-    tokenInChainId: numericChainId,
-    tokenOutChainId: numericChainId,
-    tokenIn: tokenIn.address,
-    tokenOut: tokenOut.address,
-    swapper: effectiveSwapper,
-    autoSlippage: "DEFAULT",
-    routingPreference: "BEST_PRICE",
-    generatePermitAsTransaction: false,
-  };
-
-  const feeBps = Number(process.env.UNISWAP_FEE_BPS ?? "25");
-  const feeRecipient = process.env.UNISWAP_FEE_RECIPIENT ?? "0x349862C428A86660826966fDbC6a2b5A03c57420";
-  if (feeBps > 0) {
-    quoteBody.integratorFees = [{ bips: feeBps, recipient: feeRecipient }];
-  }
+  const { swapper, isPlaceholder } = resolveSwapper(args, chainId);
 
   let quoteData: UniswapQuoteResponse;
   try {
-    const response = await fetch(`${UNISWAP_API_BASE}/quote`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": UNISWAP_API_KEY,
-        "x-universal-router-version": "2.0",
-      },
-      body: JSON.stringify(quoteBody),
+    quoteData = await fetchUniswapQuote({
+      chainId,
+      tokenIn,
+      tokenOut,
+      amount,
+      rawAmount,
+      swapper,
+      slippage: args.slippage,
     });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error(
-        JSON.stringify({ error: `Uniswap API error ${response.status}`, detail: text }),
-      );
-      process.exit(1);
-    }
-
-    quoteData = (await response.json()) as UniswapQuoteResponse;
   } catch (err) {
     console.error(
       JSON.stringify({
-        error: "Failed to reach Uniswap Trade API",
+        error: "Failed to fetch Uniswap quote",
         detail: (err as Error).message,
       }),
     );
@@ -204,6 +254,12 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
   const q = quoteData.quote ?? {};
   const outputRaw = q.output?.amount ?? "0";
   const minOutputRaw = q.output?.minimumAmount ?? "0";
+
+  const feeBps = Number(process.env.UNISWAP_FEE_BPS ?? "25");
+  const feeRecipient =
+    process.env.UNISWAP_FEE_RECIPIENT ?? "0x349862C428A86660826966fDbC6a2b5A03c57420";
+
+  const mp = quoteData.methodParameters;
 
   console.log(
     JSON.stringify(
@@ -223,15 +279,26 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
             rawAmount: outputRaw,
           },
           chain: chainId,
-          swapper: swapper ?? null,
-          swapperIsPlaceholder: !swapper,
+          swapper: isPlaceholder ? null : swapper,
+          swapperIsPlaceholder: isPlaceholder,
           gasFeeUSD: q.gasFeeUSD ?? null,
           priceImpact: q.priceImpact ?? null,
           ...(feeBps > 0 ? { integratorFee: { bips: feeBps, recipient: feeRecipient } } : {}),
           routing: quoteData.routing ?? "unknown",
           requestId: quoteData.requestId ?? null,
         },
-        note: "Quote only — to execute, use send-tx with the calldata returned by the Uniswap Universal Router.",
+        ...(mp
+          ? {
+              execution: {
+                routerAddress: mp.to || UNIVERSAL_ROUTER_ADDRESS,
+                calldata: mp.calldata,
+                value: mp.value,
+              },
+            }
+          : {}),
+        note: mp
+          ? "Quote includes calldata. Use execute-swap to send this swap to your wallet for signing."
+          : "Quote only — to execute, use execute-swap with the same parameters.",
       },
       null,
       2,
