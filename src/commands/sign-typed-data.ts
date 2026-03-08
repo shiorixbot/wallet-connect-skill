@@ -76,16 +76,17 @@ export async function cmdSignTypedData(args: ParsedArgs): Promise<void> {
     process.exit(1);
   }
 
-  const primaryType: string =
-    typedData.primaryType ??
-    (() => {
-      try {
-        return inferPrimaryType(typedData.types);
-      } catch (err) {
-        console.error(JSON.stringify({ error: (err as Error).message }));
-        process.exit(1);
-      }
-    })();
+  let primaryType: string;
+  if (typedData.primaryType) {
+    primaryType = typedData.primaryType;
+  } else {
+    try {
+      primaryType = inferPrimaryType(typedData.types);
+    } catch (err) {
+      console.error(JSON.stringify({ error: (err as Error).message }));
+      process.exit(1);
+    }
+  }
 
   const client = await getClient();
   const sessionData = requireSession(loadSessions(), args.topic);

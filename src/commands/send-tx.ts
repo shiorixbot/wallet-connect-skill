@@ -11,14 +11,14 @@ import {
   resolveAddress,
   requestWithTimeout,
 } from "../helpers.js";
-import { getTokenAddress, getTokenDecimals } from "./tokens.js";
+import { getTokenAddress, getTokenDecimals, SOLANA_RPC } from "./tokens.js";
+import { toRaw } from "./swap.js";
 import {
   Connection,
   PublicKey,
   SystemProgram,
   TransactionMessage,
   VersionedTransaction,
-  LAMPORTS_PER_SOL,
   ComputeBudgetProgram,
 } from "@solana/web3.js";
 import {
@@ -28,10 +28,6 @@ import {
 } from "@solana/spl-token";
 import type { SignClient } from "@walletconnect/sign-client";
 import type { ParsedArgs, Session } from "../types.js";
-
-const SOLANA_RPC: Record<string, string> = {
-  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
-};
 
 async function sendSolana(
   client: InstanceType<typeof SignClient>,
@@ -64,7 +60,7 @@ async function sendSolana(
 
     const mintPubkey = new PublicKey(mintAddr);
     const decimals = getTokenDecimals(args.token);
-    const amount = BigInt(Math.round(parseFloat(args.amount!) * 10 ** decimals));
+    const amount = BigInt(toRaw(args.amount!, decimals));
 
     const fromAta = getAssociatedTokenAddressSync(mintPubkey, fromPubkey);
     const toAta = getAssociatedTokenAddressSync(mintPubkey, toPubkey);
@@ -79,7 +75,7 @@ async function sendSolana(
     instructions.push(createTransferInstruction(fromAta, toAta, fromPubkey, amount));
     tokenLabel = args.token;
   } else {
-    const lamports = Math.round(parseFloat(args.amount || "0") * LAMPORTS_PER_SOL);
+    const lamports = Number(toRaw(args.amount || "0", 9));
     instructions.push(SystemProgram.transfer({ fromPubkey, toPubkey, lamports }));
   }
 
@@ -157,14 +153,14 @@ async function sendEvm(
     }
 
     const decimals = getTokenDecimals(args.token);
-    const amount = BigInt(Math.round(parseFloat(args.amount!) * 10 ** decimals));
+    const amount = BigInt(toRaw(args.amount!, decimals));
     const toAddr = resolvedTo.replace("0x", "").padStart(64, "0");
     const amountHex = amount.toString(16).padStart(64, "0");
     const data = `0xa9059cbb${toAddr}${amountHex}`;
 
     tx = { from, to: tokenAddr, data };
   } else {
-    const weiAmount = BigInt(Math.round(parseFloat(args.amount || "0") * 1e18));
+    const weiAmount = BigInt(toRaw(args.amount || "0", 18));
     tx = {
       from,
       to: resolvedTo,
@@ -198,6 +194,14 @@ async function sendEvm(
 export async function cmdSendTx(args: ParsedArgs): Promise<void> {
   if (!args.topic) {
     console.error(JSON.stringify({ error: "--topic required" }));
+    process.exit(1);
+  }
+  if (!args.to) {
+    console.error(JSON.stringify({ error: "--to required" }));
+    process.exit(1);
+  }
+  if (!args.amount) {
+    console.error(JSON.stringify({ error: "--amount required" }));
     process.exit(1);
   }
 

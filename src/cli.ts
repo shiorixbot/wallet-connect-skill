@@ -37,22 +37,11 @@ import {
 } from "./commands/sessions.js";
 import { getTokensForChain } from "./commands/tokens.js";
 import { loadSessions } from "./storage.js";
-import { findSessionByAddress } from "./client.js";
+import { resolveSessionByAddress } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 
 function resolveAddress(args: ParsedArgs): ParsedArgs {
-  if (args.address && !args.topic) {
-    const sessions = loadSessions();
-    const match = findSessionByAddress(sessions, args.address);
-    if (!match) {
-      console.error(
-        JSON.stringify({ error: "No session found for address", address: args.address }),
-      );
-      process.exit(1);
-    }
-    args.topic = match.topic;
-  }
-  return args;
+  return resolveSessionByAddress(args, loadSessions());
 }
 
 async function cmdTokens(args: ParsedArgs): Promise<void> {

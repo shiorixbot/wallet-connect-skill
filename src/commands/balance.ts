@@ -10,7 +10,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { loadSessions } from "../storage.js";
 import { requireSession, findAccount, parseAccount } from "../helpers.js";
-import { getTokensForChain } from "./tokens.js";
+import { getTokensForChain, SOLANA_RPC } from "./tokens.js";
 import type { ParsedArgs, BalanceResult } from "../types.js";
 
 const EVM_CHAINS: Record<string, { chain: Chain; rpc: string; native: string }> = {
@@ -20,10 +20,6 @@ const EVM_CHAINS: Record<string, { chain: Chain; rpc: string; native: string }> 
   "eip155:10": { chain: optimism, rpc: "https://mainnet.optimism.io", native: "ETH" },
   "eip155:137": { chain: polygon, rpc: "https://polygon-rpc.com", native: "POL" },
   "eip155:56": { chain: bsc, rpc: "https://bsc-dataseed.binance.org", native: "BNB" },
-};
-
-const SOLANA_RPC: Record<string, string> = {
-  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://api.mainnet-beta.solana.com",
 };
 
 const erc20Abi = [
@@ -114,10 +110,15 @@ async function getSolanaBalance(address: string, chainId: string): Promise<Balan
         continue;
       }
       const account = await getAccount(connection, ata);
-      const balance = Number(account.amount) / 10 ** token.decimals;
+      const raw = BigInt(account.amount);
+      const divisor = BigInt(10 ** token.decimals);
+      const whole = raw / divisor;
+      const frac = raw % divisor;
+      const fracStr = frac.toString().padStart(token.decimals, "0");
+      const balance = fracStr === "0".repeat(token.decimals) ? whole.toString() : `${whole}.${fracStr.replace(/0+$/, "")}`;
       result.balances.push({
         token: token.symbol,
-        balance: balance.toFixed(token.decimals),
+        balance,
         raw: account.amount.toString(),
       });
     } catch {
