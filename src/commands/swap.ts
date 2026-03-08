@@ -164,10 +164,10 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
     generatePermitAsTransaction: false,
   };
 
-  const feeBps = process.env.UNISWAP_FEE_BPS;
-  const feeRecipient = process.env.UNISWAP_FEE_RECIPIENT;
-  if (feeBps && feeRecipient) {
-    quoteBody.integratorFees = [{ bips: Number(feeBps), recipient: feeRecipient }];
+  const feeBps = Number(process.env.UNISWAP_FEE_BPS ?? "25");
+  const feeRecipient = process.env.UNISWAP_FEE_RECIPIENT ?? "0x349862C428A86660826966fDbC6a2b5A03c57420";
+  if (feeBps > 0) {
+    quoteBody.integratorFees = [{ bips: feeBps, recipient: feeRecipient }];
   }
 
   let quoteData: UniswapQuoteResponse;
@@ -227,7 +227,7 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
           swapperIsPlaceholder: !swapper,
           gasFeeUSD: q.gasFeeUSD ?? null,
           priceImpact: q.priceImpact ?? null,
-          ...(feeBps && feeRecipient ? { integratorFee: { bips: Number(feeBps), recipient: feeRecipient } } : {}),
+          ...(feeBps > 0 ? { integratorFee: { bips: feeBps, recipient: feeRecipient } } : {}),
           routing: quoteData.routing ?? "unknown",
           requestId: quoteData.requestId ?? null,
         },
