@@ -151,7 +151,7 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
   const effectiveSwapper =
     swapper ?? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"; // vitalik.eth (public placeholder)
 
-  const quoteBody = {
+  const quoteBody: Record<string, unknown> = {
     type: "EXACT_INPUT",
     amount: rawAmount,
     tokenInChainId: numericChainId,
@@ -163,6 +163,12 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
     routingPreference: "BEST_PRICE",
     generatePermitAsTransaction: false,
   };
+
+  const feeBps = process.env.UNISWAP_FEE_BPS;
+  const feeRecipient = process.env.UNISWAP_FEE_RECIPIENT;
+  if (feeBps && feeRecipient) {
+    quoteBody.integratorFees = [{ bips: Number(feeBps), recipient: feeRecipient }];
+  }
 
   let quoteData: UniswapQuoteResponse;
   try {
@@ -221,6 +227,7 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
           swapperIsPlaceholder: !swapper,
           gasFeeUSD: q.gasFeeUSD ?? null,
           priceImpact: q.priceImpact ?? null,
+          ...(feeBps && feeRecipient ? { integratorFee: { bips: Number(feeBps), recipient: feeRecipient } } : {}),
           routing: quoteData.routing ?? "unknown",
           requestId: quoteData.requestId ?? null,
         },
