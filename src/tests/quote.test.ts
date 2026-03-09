@@ -5,7 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { toRaw, fromRaw, resolveToken } from "../commands/quote.js";
+import { toRaw, fromRaw, resolveToken, SOL_NATIVE_MINT, SOLANA_CHAIN_ID } from "../commands/quote.js";
 
 const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -181,6 +181,32 @@ describe("resolveToken", () => {
     assert.throws(
       () => resolveToken("XYZ", ETH_CHAIN),
       /eip155:1/,
+    );
+  });
+
+  // Solana token resolution
+  it("resolves SOL to native mint on Solana", () => {
+    const t = resolveToken("SOL", SOLANA_CHAIN_ID);
+    assert.equal(t.address, SOL_NATIVE_MINT);
+    assert.equal(t.decimals, 9);
+    assert.equal(t.symbol, "SOL");
+  });
+
+  it("resolves sol (lowercase) to native mint on Solana", () => {
+    const t = resolveToken("sol", SOLANA_CHAIN_ID);
+    assert.equal(t.address, SOL_NATIVE_MINT);
+  });
+
+  it("resolves USDC on Solana to SPL mint address", () => {
+    const t = resolveToken("USDC", SOLANA_CHAIN_ID);
+    assert.equal(t.address, "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    assert.equal(t.decimals, 6);
+  });
+
+  it("throws for unknown token on Solana", () => {
+    assert.throws(
+      () => resolveToken("FAKECOIN", SOLANA_CHAIN_ID),
+      /Unknown token "FAKECOIN"/,
     );
   });
 });

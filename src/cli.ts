@@ -16,8 +16,8 @@
  *   delete-session   Remove a saved session
  *   sign-typed-data  Sign EIP-712 typed data (EVM only)
  *   health           Ping session(s) to check liveness (--all, --clean)
- *   quote            Fetch a Uniswap quote (EVM only)
- *   swap             Execute a Uniswap swap via WalletConnect (EVM only)
+ *   quote            Fetch a swap quote (EVM via Uniswap, Solana via Jupiter)
+ *   swap             Execute a swap via WalletConnect (EVM + Solana)
  */
 
 import { parseArgs } from "util";
@@ -113,8 +113,8 @@ Commands:
   whoami           Show account info (--topic <topic> | --address <addr>)
   delete-session   Remove a saved session (--topic <topic> | --address <addr>)
   health           Ping session to check liveness (--topic | --address | --all) [--clean]
-  quote            Fetch Uniswap quote --token <in> --out <out> --amount <n> [--chain eip155:1] [--address <addr>]
-  swap             Execute swap via wallet --token <in> --out <out> --amount <n> --address <addr> [--slippage 0.5] [--deadline 1800]
+  quote            Fetch swap quote --token <in> --out <out> --amount <n> [--chain eip155:1|solana:...] [--address <addr>]
+  swap             Execute swap via wallet --token <in> --out <out> --amount <n> --address <addr> [--chain ...] [--slippage 0.5]
 
 Options:
   --address <0x...>  Select session by wallet address (case-insensitive)
