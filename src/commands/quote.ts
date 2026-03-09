@@ -12,7 +12,6 @@
 import { loadSessions } from "../storage.js";
 import { requireSession, findAccount, parseAccount } from "../helpers.js";
 import { getTokensForChain } from "./tokens.js";
-import { UNIVERSAL_ROUTER_ADDRESS } from "../universal-router.js";
 import type { ParsedArgs } from "../types.js";
 
 export const UNISWAP_API_BASE = "https://trade-api.gateway.uniswap.org/v1";
@@ -290,7 +289,7 @@ export async function cmdQuote(args: ParsedArgs): Promise<void> {
         ...(mp
           ? {
               execution: {
-                routerAddress: mp.to || UNIVERSAL_ROUTER_ADDRESS,
+                routerAddress: mp.to,
                 calldata: mp.calldata,
                 value: mp.value,
               },

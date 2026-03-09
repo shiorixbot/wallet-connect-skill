@@ -20,7 +20,6 @@ import {
   CHAIN_ID_MAP,
   NATIVE_ADDRESS,
 } from "./quote.js";
-import { UNIVERSAL_ROUTER_ADDRESS } from "../universal-router.js";
 import type { SignClient } from "@walletconnect/sign-client";
 import type { ParsedArgs } from "../types.js";
 
@@ -108,7 +107,7 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
   }
 
   const mp = quoteData.methodParameters;
-  if (!mp || !mp.calldata) {
+  if (!mp || !mp.calldata || !mp.to) {
     console.error(
       JSON.stringify({
         error: "Uniswap API did not return execution calldata",
@@ -134,7 +133,7 @@ export async function cmdSwap(args: ParsedArgs): Promise<void> {
   );
 
   // Build the transaction
-  const routerAddress = mp.to || UNIVERSAL_ROUTER_ADDRESS;
+  const routerAddress = mp.to;
   const tx: Record<string, string> = {
     from: swapper,
     to: routerAddress,
