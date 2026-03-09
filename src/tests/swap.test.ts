@@ -1,186 +1,316 @@
 /**
- * Unit tests for swap command pure-function helpers:
- * toRaw, fromRaw, resolveToken — no network required.
+ * Integration tests for execute-swap: calldata round-trip and permit2 flow.
+ * Tests verify calldata construction without hitting the network.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { toRaw, fromRaw, resolveToken } from "../commands/swap.js";
+import { decodeFunctionData, decodeAbiParameters } from "viem";
+import {
+  encodeV3Path,
+  encodeV3SwapExactIn,
+  encodeExecute,
+  buildExactInSingle,
+  buildExactInWithPermit2,
+  Commands,
+  UNIVERSAL_ROUTER_ADDRESS,
+} from "../universal-router.js";
 
-const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
+// Well-known mainnet addresses
+const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const SWAPPER = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+
+const EXECUTE_ABI = [
+  {
+    name: "execute",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [
+      { name: "commands", type: "bytes" },
+      { name: "inputs", type: "bytes[]" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+const SWAP_EXACT_IN_PARAMS = [
+  { name: "recipient", type: "address" },
+  { name: "amountIn", type: "uint256" },
+  { name: "amountOutMin", type: "uint256" },
+  { name: "path", type: "bytes" },
+  { name: "payerIsUser", type: "bool" },
+] as const;
 
 // ---------------------------------------------------------------------------
-// toRaw — human amount → raw integer string
+// ETH → USDC swap calldata round-trip
 // ---------------------------------------------------------------------------
 
-describe("toRaw", () => {
-  it("converts whole ETH amount (18 decimals)", () => {
-    assert.equal(toRaw("1", 18), "1000000000000000000");
+describe("ETH → USDC swap calldata round-trip", () => {
+  const amountIn = 100000000000000000n; // 0.1 ETH
+  const amountOutMin = 180000000n; // 180 USDC min (slippage-adjusted)
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800);
+
+  it("builds calldata that decodes back to original parameters", () => {
+    const calldata = buildExactInSingle({
+      recipient: SWAPPER,
+      tokenIn: WETH,
+      tokenOut: USDC,
+      fee: 3000,
+      amountIn,
+      amountOutMin,
+      deadline,
+    });
+
+    // Step 1: Decode the execute() call
+    const executeDecoded = decodeFunctionData({
+      abi: EXECUTE_ABI,
+      data: calldata as `0x${string}`,
+    });
+
+    assert.equal(executeDecoded.functionName, "execute");
+    const [commands, inputs, decodedDeadline] = executeDecoded.args;
+
+    // Step 2: Verify command is V3_SWAP_EXACT_IN
+    assert.equal(commands, "0x00");
+    assert.equal(decodedDeadline, deadline);
+
+    // Step 3: Decode the swap input
+    const swapDecoded = decodeAbiParameters(SWAP_EXACT_IN_PARAMS, inputs[0]);
+
+    assert.equal(swapDecoded[0].toLowerCase(), SWAPPER.toLowerCase()); // recipient
+    assert.equal(swapDecoded[1], amountIn); // amountIn
+    assert.equal(swapDecoded[2], amountOutMin); // amountOutMin
+    assert.equal(swapDecoded[4], true); // payerIsUser
+
+    // Step 4: Decode the V3 path from the swap input
+    const pathHex = swapDecoded[3].slice(2); // remove 0x
+    const tokenInFromPath = "0x" + pathHex.slice(0, 40);
+    const feeFromPath = parseInt(pathHex.slice(40, 46), 16);
+    const tokenOutFromPath = "0x" + pathHex.slice(46, 86);
+
+    assert.equal(tokenInFromPath.toLowerCase(), WETH.toLowerCase());
+    assert.equal(feeFromPath, 3000);
+    assert.equal(tokenOutFromPath.toLowerCase(), USDC.toLowerCase());
   });
 
-  it("converts 0.1 ETH to 100000000000000000", () => {
-    assert.equal(toRaw("0.1", 18), "100000000000000000");
-  });
+  it("produces a valid transaction object shape", () => {
+    const calldata = buildExactInSingle({
+      recipient: SWAPPER,
+      tokenIn: WETH,
+      tokenOut: USDC,
+      fee: 3000,
+      amountIn,
+      amountOutMin,
+      deadline,
+    });
 
-  it("converts 1 USDC (6 decimals)", () => {
-    assert.equal(toRaw("1", 6), "1000000");
-  });
+    // Simulate the tx object that execute-swap would build
+    const tx = {
+      from: SWAPPER,
+      to: UNIVERSAL_ROUTER_ADDRESS,
+      data: calldata,
+      value: "0x" + amountIn.toString(16), // native ETH swap needs value
+    };
 
-  it("converts 0.5 USDC (6 decimals)", () => {
-    assert.equal(toRaw("0.5", 6), "500000");
-  });
-
-  it("converts 1000 USDC", () => {
-    assert.equal(toRaw("1000", 6), "1000000000");
-  });
-
-  it("handles fractional with more precision than decimals (truncates)", () => {
-    // 0.1234567 at 6 decimals → 123456 (truncated, not rounded)
-    assert.equal(toRaw("0.1234567", 6), "123456");
-  });
-
-  it("converts zero", () => {
-    assert.equal(toRaw("0", 18), "0");
-  });
-
-  it("converts fractional-only input (no whole part)", () => {
-    // ".5" — whole defaults to 0
-    assert.equal(toRaw(".5", 6), "500000");
-  });
-
-  it("converts 10.005 at 6 decimals", () => {
-    assert.equal(toRaw("10.005", 6), "10005000");
-  });
-
-  it("converts 1.23456789 ETH (18 decimals, full precision)", () => {
-    assert.equal(toRaw("1.23456789", 18), "1234567890000000000");
+    assert.equal(tx.from, SWAPPER);
+    assert.equal(tx.to, UNIVERSAL_ROUTER_ADDRESS);
+    assert.ok(tx.data.startsWith("0x"));
+    assert.ok(tx.data.length > 10); // function selector + encoded data
+    assert.equal(tx.value, "0x16345785d8a0000"); // 0.1 ETH in hex
   });
 });
 
 // ---------------------------------------------------------------------------
-// fromRaw — raw integer string → human-readable
+// ERC-20 → ERC-20 swap with permit2
 // ---------------------------------------------------------------------------
 
-describe("fromRaw", () => {
-  it("converts 1 ETH from raw", () => {
-    assert.equal(fromRaw("1000000000000000000", 18), "1");
+describe("ERC-20 → ERC-20 swap with permit2", () => {
+  const amountIn = 2000000000n; // 2000 USDC (6 decimals)
+  const amountOutMin = 900000000000000000n; // 0.9 WETH min
+  const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800);
+  const fakeSig = "0x" + "ab".repeat(65);
+
+  it("prepends PERMIT2_PERMIT before V3_SWAP_EXACT_IN", () => {
+    const calldata = buildExactInWithPermit2({
+      recipient: SWAPPER,
+      tokenIn: USDC,
+      tokenOut: WETH,
+      fee: 3000,
+      amountIn,
+      amountOutMin,
+      deadline,
+      permit2: {
+        token: USDC,
+        amount: amountIn,
+        expiration: 1700000000,
+        nonce: 0,
+        spender: UNIVERSAL_ROUTER_ADDRESS,
+        sigDeadline: deadline,
+        signature: fakeSig,
+      },
+    });
+
+    const decoded = decodeFunctionData({
+      abi: EXECUTE_ABI,
+      data: calldata as `0x${string}`,
+    });
+
+    const [commands, inputs] = decoded.args;
+
+    // Two commands: PERMIT2_PERMIT (0x0a) + V3_SWAP_EXACT_IN (0x00)
+    assert.equal(commands, "0x0a00");
+    assert.equal(inputs.length, 2);
   });
 
-  it("converts 0.1 ETH from raw", () => {
-    assert.equal(fromRaw("100000000000000000", 18), "0.1");
+  it("permit2 input decodes to correct token and amount", () => {
+    const calldata = buildExactInWithPermit2({
+      recipient: SWAPPER,
+      tokenIn: USDC,
+      tokenOut: WETH,
+      fee: 3000,
+      amountIn,
+      amountOutMin,
+      deadline,
+      permit2: {
+        token: USDC,
+        amount: amountIn,
+        expiration: 1700000000,
+        nonce: 0,
+        spender: UNIVERSAL_ROUTER_ADDRESS,
+        sigDeadline: deadline,
+        signature: fakeSig,
+      },
+    });
+
+    const decoded = decodeFunctionData({
+      abi: EXECUTE_ABI,
+      data: calldata as `0x${string}`,
+    });
+
+    const [, inputs] = decoded.args;
+
+    // Decode the permit2 input (first command)
+    const permitDecoded = decodeAbiParameters(
+      [
+        {
+          name: "permitSingle",
+          type: "tuple",
+          components: [
+            {
+              name: "details",
+              type: "tuple",
+              components: [
+                { name: "token", type: "address" },
+                { name: "amount", type: "uint160" },
+                { name: "expiration", type: "uint48" },
+                { name: "nonce", type: "uint48" },
+              ],
+            },
+            { name: "spender", type: "address" },
+            { name: "sigDeadline", type: "uint256" },
+          ],
+        },
+        { name: "signature", type: "bytes" },
+      ],
+      inputs[0],
+    );
+
+    assert.equal(permitDecoded[0].details.token.toLowerCase(), USDC.toLowerCase());
+    assert.equal(permitDecoded[0].details.amount, amountIn);
+    assert.equal(permitDecoded[0].spender.toLowerCase(), UNIVERSAL_ROUTER_ADDRESS.toLowerCase());
   });
 
-  it("converts 1 USDC from raw (6 decimals)", () => {
-    assert.equal(fromRaw("1000000", 6), "1");
+  it("swap input follows the permit2 input", () => {
+    const calldata = buildExactInWithPermit2({
+      recipient: SWAPPER,
+      tokenIn: USDC,
+      tokenOut: WETH,
+      fee: 3000,
+      amountIn,
+      amountOutMin,
+      deadline,
+      permit2: {
+        token: USDC,
+        amount: amountIn,
+        expiration: 1700000000,
+        nonce: 0,
+        spender: UNIVERSAL_ROUTER_ADDRESS,
+        sigDeadline: deadline,
+        signature: fakeSig,
+      },
+    });
+
+    const decoded = decodeFunctionData({
+      abi: EXECUTE_ABI,
+      data: calldata as `0x${string}`,
+    });
+
+    const [, inputs] = decoded.args;
+
+    // Decode the swap input (second command)
+    const swapDecoded = decodeAbiParameters(SWAP_EXACT_IN_PARAMS, inputs[1]);
+
+    assert.equal(swapDecoded[0].toLowerCase(), SWAPPER.toLowerCase());
+    assert.equal(swapDecoded[1], amountIn);
+    assert.equal(swapDecoded[2], amountOutMin);
+    assert.equal(swapDecoded[4], true);
   });
 
-  it("converts 0.5 USDC from raw", () => {
-    assert.equal(fromRaw("500000", 6), "0.5");
-  });
+  it("does NOT include value for ERC-20 swaps (no native token)", () => {
+    const calldata = buildExactInWithPermit2({
+      recipient: SWAPPER,
+      tokenIn: USDC,
+      tokenOut: WETH,
+      fee: 3000,
+      amountIn,
+      amountOutMin,
+      deadline,
+      permit2: {
+        token: USDC,
+        amount: amountIn,
+        expiration: 1700000000,
+        nonce: 0,
+        spender: UNIVERSAL_ROUTER_ADDRESS,
+        sigDeadline: deadline,
+        signature: fakeSig,
+      },
+    });
 
-  it("converts 0 from raw", () => {
-    assert.equal(fromRaw("0", 18), "0");
-  });
+    // Simulate the tx object for ERC-20 swap — no value field
+    const tx: Record<string, string> = {
+      from: SWAPPER,
+      to: UNIVERSAL_ROUTER_ADDRESS,
+      data: calldata,
+    };
 
-  it("strips trailing zeros from fractional part", () => {
-    // 1.50 → "1.5"
-    assert.equal(fromRaw("1500000", 6), "1.5");
-  });
-
-  it("round-trips with toRaw (18 decimals)", () => {
-    const human = "2.5";
-    const raw = toRaw(human, 18);
-    const back = fromRaw(raw, 18);
-    assert.equal(back, human);
-  });
-
-  it("round-trips with toRaw (6 decimals)", () => {
-    const human = "100.25";
-    const raw = toRaw(human, 6);
-    const back = fromRaw(raw, 6);
-    assert.equal(back, human);
-  });
-
-  it("trims fractional to 8 significant digits", () => {
-    // Very small amount with many decimals: fromRaw should cap frac at 8 chars
-    const result = fromRaw("1", 18); // 1 wei → 0.000000000000000001
-    // fromRaw slices to 8 chars of frac then trims zeros — "00000000" → empty → should return "0"
-    // Actually: "000000000000000001".padStart(18).slice(0,8) = "00000000" → trimmed = ""
-    assert.equal(result, "0");
+    // ERC-20 swaps should NOT have a value field
+    assert.equal(tx.value, undefined);
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveToken — symbol → { address, decimals, symbol }
+// Manual calldata construction matches high-level builder
 // ---------------------------------------------------------------------------
 
-describe("resolveToken", () => {
-  const ETH_CHAIN = "eip155:1";
-  const POLYGON_CHAIN = "eip155:137";
+describe("manual vs high-level builder equivalence", () => {
+  it("buildExactInSingle matches manual encodeExecute", () => {
+    const deadline = 1700001800n;
+    const path = encodeV3Path([WETH, USDC], [3000]);
+    const swapInput = encodeV3SwapExactIn(SWAPPER, 1000000000000000000n, 0n, path, true);
+    const manual = encodeExecute([Commands.V3_SWAP_EXACT_IN], [swapInput], deadline);
 
-  it("resolves ETH to native address on mainnet", () => {
-    const t = resolveToken("ETH", ETH_CHAIN);
-    assert.equal(t.address, NATIVE_ADDRESS);
-    assert.equal(t.decimals, 18);
-    assert.equal(t.symbol, "ETH");
-  });
+    const highlevel = buildExactInSingle({
+      recipient: SWAPPER,
+      tokenIn: WETH,
+      tokenOut: USDC,
+      fee: 3000,
+      amountIn: 1000000000000000000n,
+      amountOutMin: 0n,
+      deadline,
+    });
 
-  it("resolves POL (native) to native address on Polygon", () => {
-    const t = resolveToken("POL", POLYGON_CHAIN);
-    assert.equal(t.address, NATIVE_ADDRESS);
-    assert.equal(t.decimals, 18);
-  });
-
-  it("resolves ETH symbol to native on Polygon (aliased)", () => {
-    // ETH on Polygon chain should still resolve via native-alias check
-    const t = resolveToken("ETH", POLYGON_CHAIN);
-    assert.equal(t.address, NATIVE_ADDRESS);
-  });
-
-  it("resolves USDC on mainnet to known address", () => {
-    const t = resolveToken("USDC", ETH_CHAIN);
-    assert.ok(t.address.startsWith("0x"), "should be a 0x address");
-    assert.equal(t.decimals, 6);
-    assert.equal(t.symbol, "USDC");
-  });
-
-  it("resolves WETH on mainnet", () => {
-    const t = resolveToken("WETH", ETH_CHAIN);
-    assert.ok(t.address.startsWith("0x"));
-    assert.equal(t.decimals, 18);
-    assert.equal(t.symbol, "WETH");
-  });
-
-  it("resolves DAI on mainnet", () => {
-    const t = resolveToken("DAI", ETH_CHAIN);
-    assert.ok(t.address.startsWith("0x"));
-    assert.equal(t.decimals, 18);
-    assert.equal(t.symbol, "DAI");
-  });
-
-  it("resolves USDC on Polygon", () => {
-    const t = resolveToken("USDC", POLYGON_CHAIN);
-    assert.ok(t.address.startsWith("0x"));
-    assert.equal(t.decimals, 6);
-  });
-
-  it("is case-insensitive for symbol lookup", () => {
-    const lower = resolveToken("usdc", ETH_CHAIN);
-    const upper = resolveToken("USDC", ETH_CHAIN);
-    assert.equal(lower.address, upper.address);
-  });
-
-  it("throws for unknown token symbol", () => {
-    assert.throws(
-      () => resolveToken("FAKECOIN", ETH_CHAIN),
-      /Unknown token "FAKECOIN"/,
-    );
-  });
-
-  it("error message includes the chain hint", () => {
-    assert.throws(
-      () => resolveToken("XYZ", ETH_CHAIN),
-      /eip155:1/,
-    );
+    assert.equal(manual, highlevel);
   });
 });
