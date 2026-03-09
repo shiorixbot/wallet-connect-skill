@@ -41,6 +41,8 @@ export interface ParsedArgs {
   amount?: string;
   token?: string;
   data?: string;
+  slippage?: string;
+  deadline?: string;
   all?: boolean;
   clean?: boolean;
   help?: boolean;

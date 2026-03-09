@@ -16,7 +16,8 @@
  *   delete-session   Remove a saved session
  *   sign-typed-data  Sign EIP-712 typed data (EVM only)
  *   health           Ping session(s) to check liveness (--all, --clean)
- *   swap             Fetch a Uniswap quote (EVM only)
+ *   quote            Fetch a swap quote (EVM via Uniswap, Solana via Jupiter)
+ *   swap             Execute a swap via WalletConnect (EVM + Solana)
  */
 
 import { parseArgs } from "util";
@@ -27,7 +28,7 @@ import { cmdSignTypedData } from "./commands/sign-typed-data.js";
 import { cmdSendTx } from "./commands/send-tx.js";
 import { cmdBalance } from "./commands/balance.js";
 import { cmdHealth } from "./commands/health.js";
-import { cmdSwap } from "./commands/swap.js";
+import { cmdQuote, cmdSwap } from "./commands/swap/index.js";
 import {
   cmdStatus,
   cmdSessions,
@@ -83,6 +84,8 @@ const { positionals, values } = parseArgs({
     amount: { type: "string" },
     token: { type: "string" },
     data: { type: "string" },
+    slippage: { type: "string" },
+    deadline: { type: "string" },
     all: { type: "boolean" },
     clean: { type: "boolean" },
     help: { type: "boolean", short: "h" },
@@ -109,13 +112,14 @@ Commands:
   whoami           Show account info (--topic <topic> | --address <addr>)
   delete-session   Remove a saved session (--topic <topic> | --address <addr>)
   health           Ping session to check liveness (--topic | --address | --all) [--clean]
-  swap             Fetch Uniswap quote --token <in> --out <out> --amount <n> [--chain eip155:1] [--address <addr>]
+  quote            Fetch swap quote --token <in> --out <out> --amount <n> [--chain eip155:1|solana:...] [--address <addr>]
+  swap             Execute swap via wallet --token <in> --out <out> --amount <n> --address <addr> [--chain ...] [--slippage 0.5]
 
 Options:
   --address <0x...>  Select session by wallet address (case-insensitive)
   --all              (health) Ping all sessions
   --clean            (health) Remove dead sessions from storage
-  --out <symbol>     (swap) Output token symbol (e.g. USDC, WETH)`);
+  --out <symbol>     (quote/swap) Output token symbol (e.g. USDC, WETH)`);
   process.exit(0);
 }
 
@@ -148,7 +152,11 @@ const commands: Record<string, (args: ParsedArgs) => Promise<void>> = {
   whoami: cmdWhoami,
   "delete-session": cmdDeleteSession,
   health: cmdHealth,
-  swap: cmdSwap,
+  quote: cmdQuote,
+  swap: (a) => {
+    a = resolveAddress(a);
+    return cmdSwap(a);
+  },
 };
 
 if (!commands[command]) {

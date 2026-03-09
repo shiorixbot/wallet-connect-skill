@@ -12,7 +12,7 @@ import {
   requestWithTimeout,
 } from "../helpers.js";
 import { getTokenAddress, getTokenDecimals, SOLANA_RPC } from "./tokens.js";
-import { toRaw } from "./swap.js";
+import { toRaw } from "./swap/lib.js";
 import {
   Connection,
   PublicKey,
