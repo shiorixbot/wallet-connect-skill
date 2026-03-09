@@ -1,13 +1,22 @@
 /**
- * Unit tests for quote command pure-function helpers:
- * toRaw, fromRaw, resolveToken — no network required.
+ * Unit tests for swap helpers:
+ * toRaw, fromRaw, provider.resolveToken — no network required.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { toRaw, fromRaw, resolveToken, SOL_NATIVE_MINT, SOLANA_CHAIN_ID } from "../commands/quote.js";
+import { toRaw, fromRaw } from "../commands/swap/lib.js";
+import { uniswap } from "../commands/swap/uniswap.js";
+import { jupiter } from "../commands/swap/jupiter.js";
 
 const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
+const SOL_NATIVE_MINT = "So11111111111111111111111111111111111111112";
+const SOLANA_CHAIN_ID = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+
+function resolveToken(symbol: string, chainId: string) {
+  if (chainId.startsWith("solana:")) return jupiter.resolveToken(symbol, chainId);
+  return uniswap.resolveToken(symbol, chainId);
+}
 
 // ---------------------------------------------------------------------------
 // toRaw — human amount → raw integer string

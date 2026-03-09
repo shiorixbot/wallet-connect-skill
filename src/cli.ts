@@ -28,8 +28,7 @@ import { cmdSignTypedData } from "./commands/sign-typed-data.js";
 import { cmdSendTx } from "./commands/send-tx.js";
 import { cmdBalance } from "./commands/balance.js";
 import { cmdHealth } from "./commands/health.js";
-import { cmdQuote } from "./commands/quote.js";
-import { cmdSwap } from "./commands/swap.js";
+import { cmdQuote, cmdSwap } from "./commands/swap/index.js";
 import {
   cmdStatus,
   cmdSessions,
